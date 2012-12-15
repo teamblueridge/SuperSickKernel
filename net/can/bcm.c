@@ -43,6 +43,7 @@
 
 #include <linux/module.h>
 #include <linux/init.h>
+#include <linux/interrupt.h>
 #include <linux/hrtimer.h>
 #include <linux/list.h>
 #include <linux/proc_fs.h>
@@ -341,6 +342,18 @@ static void bcm_send_to_user(struct bcm_op *op, struct bcm_msg_head *head,
 		/* don't care about overflows in this statistic */
 		bo->dropped_usr_msgs++;
 	}
+}
+
+static void bcm_tx_start_timer(struct bcm_op *op)
+{
+	if (op->kt_ival1.tv64 && op->count)
+		hrtimer_start(&op->timer,
+			      ktime_add(ktime_get(), op->kt_ival1),
+			      HRTIMER_MODE_ABS);
+	else if (op->kt_ival2.tv64)
+		hrtimer_start(&op->timer,
+			      ktime_add(ktime_get(), op->kt_ival2),
+			      HRTIMER_MODE_ABS);
 }
 
 static void bcm_tx_start_timer(struct bcm_op *op)

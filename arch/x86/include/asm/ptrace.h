@@ -131,6 +131,9 @@ struct pt_regs {
 #ifdef __KERNEL__
 
 #include <linux/init.h>
+#ifdef CONFIG_PARAVIRT
+#include <asm/paravirt_types.h>
+#endif
 
 struct cpuinfo_x86;
 struct task_struct;
@@ -151,6 +154,22 @@ static inline unsigned long regs_return_value(struct pt_regs *regs)
 {
 	return regs->ax;
 }
+
+#ifdef CONFIG_X86_64
+static inline bool user_64bit_mode(struct pt_regs *regs)
+{
+#ifndef CONFIG_PARAVIRT
+	/*
+	 * On non-paravirt systems, this is the only long mode CPL 3
+	 * selector.  We do not allow long mode selectors in the LDT.
+	 */
+	return regs->cs == __USER_CS;
+#else
+	/* Headers are too twisted for this to go in paravirt.h. */
+	return regs->cs == __USER_CS || regs->cs == pv_info.extra_user_64bit_cs;
+#endif
+}
+#endif
 
 /*
  * user_mode_vm(regs) determines whether a register set came from user mode.

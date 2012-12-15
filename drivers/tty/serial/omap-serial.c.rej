@@ -1,0 +1,22 @@
+--- drivers/tty/serial/omap-serial.c
++++ drivers/tty/serial/omap-serial.c
+@@ -1241,8 +1242,8 @@
+ 		return -ENODEV;
+ 	}
+ 
+-	if (!request_mem_region(mem->start, resource_size(mem),
+-				pdev->dev.driver->name)) {
++	if (!request_mem_region(mem->start, (mem->end - mem->start) + 1,
++				     pdev->dev.driver->name)) {
+ 		dev_err(&pdev->dev, "memory region already claimed\n");
+ 		return -EBUSY;
+ 	}
+@@ -1308,7 +1309,7 @@
+ 	dev_err(&pdev->dev, "[UART%d]: failure [%s]: %d\n",
+ 				pdev->id, __func__, ret);
+ do_release_region:
+-	release_mem_region(mem->start, resource_size(mem));
++	release_mem_region(mem->start, (mem->end - mem->start) + 1);
+ 	return ret;
+ }
+ 

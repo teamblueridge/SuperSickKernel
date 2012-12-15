@@ -1,0 +1,10 @@
+--- drivers/gpu/drm/i915/i915_drv.h
++++ drivers/gpu/drm/i915/i915_drv.h
+@@ -545,6 +549,7 @@
+ 	u32 savePIPEB_LINK_M1;
+ 	u32 savePIPEB_LINK_N1;
+ 	u32 saveMCHBAR_RENDER_STANDBY;
++	u32 savePCH_PORT_HOTPLUG;
+ 
+ 	struct {
+ 		/** Bridge to intel-gtt-ko */

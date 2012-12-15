@@ -1,0 +1,19 @@
+--- include/linux/usb/gadget.h
++++ include/linux/usb/gadget.h
+@@ -458,6 +486,16 @@
+ 	int	(*pullup) (struct usb_gadget *, int is_on);
+ 	int	(*ioctl)(struct usb_gadget *,
+ 				unsigned code, unsigned long param);
++	void	(*get_config_params)(struct usb_dcd_config_params *);
++	int	(*udc_start)(struct usb_gadget *,
++			struct usb_gadget_driver *);
++	int	(*udc_stop)(struct usb_gadget *,
++			struct usb_gadget_driver *);
++
++	/* Those two are deprecated */
++	int	(*start)(struct usb_gadget_driver *,
++			int (*bind)(struct usb_gadget *));
++	int	(*stop)(struct usb_gadget_driver *);
+ };
+ 
+ /**

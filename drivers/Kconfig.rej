@@ -1,0 +1,20 @@
+--- drivers/Kconfig
++++ drivers/Kconfig
+@@ -114,8 +116,6 @@
+ 
+ source "drivers/vlynq/Kconfig"
+ 
+-source "drivers/virtio/Kconfig"
+-
+ source "drivers/xen/Kconfig"
+ 
+ source "drivers/staging/Kconfig"
+@@ -128,8 +128,4 @@
+ 
+ source "drivers/clocksource/Kconfig"
+ 
+-source "drivers/iommu/Kconfig"
+-
+-source "drivers/virt/Kconfig"
+-
+ endmenu

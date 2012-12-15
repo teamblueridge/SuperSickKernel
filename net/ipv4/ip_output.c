@@ -122,6 +122,7 @@ static int ip_dev_loopback_xmit(struct sk_buff *newskb)
 	newskb->pkt_type = PACKET_LOOPBACK;
 	newskb->ip_summed = CHECKSUM_UNNECESSARY;
 	WARN_ON(!skb_dst(newskb));
+	skb_dst_force(newskb);
 	netif_rx_ni(newskb);
 	return 0;
 }
@@ -503,7 +504,7 @@ int ip_fragment(struct sk_buff *skb, int (*output)(struct sk_buff *))
 
 		if (first_len - hlen > mtu ||
 		    ((first_len - hlen) & 7) ||
-		    (iph->frag_off & htons(IP_MF|IP_OFFSET)) ||
+		    ip_is_fragment(iph) ||
 		    skb_cloned(skb))
 			goto slow_path;
 

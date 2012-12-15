@@ -1,0 +1,10 @@
+--- net/bridge/br_netlink.c
++++ net/bridge/br_netlink.c
+@@ -210,6 +212,7 @@
+ 	.priv_size	= sizeof(struct net_bridge),
+ 	.setup		= br_dev_setup,
+ 	.validate	= br_validate,
++	.dellink	= br_dev_delete,
+ };
+ 
+ int __init br_netlink_init(void)

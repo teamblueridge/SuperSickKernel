@@ -1,0 +1,16 @@
+--- drivers/staging/ath6kl/os/linux/ar6000_drv.c
++++ drivers/staging/ath6kl/os/linux/ar6000_drv.c
+@@ -4114,13 +4095,6 @@
+     ar->arVersion.wlan_ver = sw_ver;
+     ar->arVersion.abi_ver = abi_ver;
+ 
+-    snprintf(ar->wdev->wiphy->fw_version, sizeof(ar->wdev->wiphy->fw_version),
+-	     "%u:%u:%u:%u",
+-	     (ar->arVersion.wlan_ver & 0xf0000000) >> 28,
+-	     (ar->arVersion.wlan_ver & 0x0f000000) >> 24,
+-	     (ar->arVersion.wlan_ver & 0x00ff0000) >> 16,
+-	     (ar->arVersion.wlan_ver & 0x0000ffff));
+-
+     /* Indicate to the waiting thread that the ready event was received */
+     ar->arWmiReady = true;
+     wake_up(&arEvent);

@@ -1,0 +1,10 @@
+--- MAINTAINERS
++++ MAINTAINERS
+@@ -1278,7 +1287,6 @@
+ ATLX ETHERNET DRIVERS
+ M:	Jay Cliburn <jcliburn@gmail.com>
+ M:	Chris Snook <chris.snook@gmail.com>
+-M:	Jie Yang <jie.yang@atheros.com>
+ L:	netdev@vger.kernel.org
+ W:	http://sourceforge.net/projects/atl1
+ W:	http://atl1.sourceforge.net

@@ -243,7 +243,7 @@ typedef unsigned long mayday_mask_t;
  * per-CPU workqueues:
  */
 struct workqueue_struct {
-	unsigned int		flags;		/* I: WQ_* flags */
+	unsigned int		flags;		/* W: WQ_* flags */
 	union {
 		struct cpu_workqueue_struct __percpu	*pcpu;
 		struct cpu_workqueue_struct		*single;
@@ -262,6 +262,7 @@ struct workqueue_struct {
 	mayday_mask_t		mayday_mask;	/* cpus requesting rescue */
 	struct worker		*rescuer;	/* I: rescue worker */
 
+	int			nr_drainers;	/* W: drain in progress */
 	int			saved_max_active; /* W: saved cwq max_active */
 	const char		*name;		/* I: workqueue name */
 #ifdef CONFIG_LOCKDEP
@@ -1014,7 +1015,7 @@ static void __queue_work(unsigned int cpu, struct workqueue_struct *wq,
 	debug_work_activate(work);
 
 	/* if dying, only works from the same workqueue are allowed */
-	if (unlikely(wq->flags & WQ_DYING) &&
+	if (unlikely(wq->flags & WQ_DRAINING) &&
 	    WARN_ON_ONCE(!is_chained_work(wq)))
 		return;
 
@@ -2413,6 +2414,59 @@ out_unlock:
 	mutex_unlock(&wq->flush_mutex);
 }
 EXPORT_SYMBOL_GPL(flush_workqueue);
+
+/**
+ * drain_workqueue - drain a workqueue
+ * @wq: workqueue to drain
+ *
+ * Wait until the workqueue becomes empty.  While draining is in progress,
+ * only chain queueing is allowed.  IOW, only currently pending or running
+ * work items on @wq can queue further work items on it.  @wq is flushed
+ * repeatedly until it becomes empty.  The number of flushing is detemined
+ * by the depth of chaining and should be relatively short.  Whine if it
+ * takes too long.
+ */
+void drain_workqueue(struct workqueue_struct *wq)
+{
+	unsigned int flush_cnt = 0;
+	unsigned int cpu;
+
+	/*
+	 * __queue_work() needs to test whether there are drainers, is much
+	 * hotter than drain_workqueue() and already looks at @wq->flags.
+	 * Use WQ_DRAINING so that queue doesn't have to check nr_drainers.
+	 */
+	spin_lock(&workqueue_lock);
+	if (!wq->nr_drainers++)
+		wq->flags |= WQ_DRAINING;
+	spin_unlock(&workqueue_lock);
+reflush:
+	flush_workqueue(wq);
+
+	for_each_cwq_cpu(cpu, wq) {
+		struct cpu_workqueue_struct *cwq = get_cwq(cpu, wq);
+		bool drained;
+
+		spin_lock_irq(&cwq->gcwq->lock);
+		drained = !cwq->nr_active && list_empty(&cwq->delayed_works);
+		spin_unlock_irq(&cwq->gcwq->lock);
+
+		if (drained)
+			continue;
+
+		if (++flush_cnt == 10 ||
+		    (flush_cnt % 100 == 0 && flush_cnt <= 1000))
+			pr_warning("workqueue %s: flush on destruction isn't complete after %u tries\n",
+				   wq->name, flush_cnt);
+		goto reflush;
+	}
+
+	spin_lock(&workqueue_lock);
+	if (!--wq->nr_drainers)
+		wq->flags &= ~WQ_DRAINING;
+	spin_unlock(&workqueue_lock);
+}
+EXPORT_SYMBOL_GPL(drain_workqueue);
 
 static bool start_flush_work(struct work_struct *work, struct wq_barrier *barr,
 			     bool wait_executing)

@@ -1,0 +1,11 @@
+--- net/wireless/reg.c
++++ net/wireless/reg.c
+@@ -903,7 +902,7 @@
+ 	    initiator != NL80211_REGDOM_SET_BY_COUNTRY_IE &&
+ 	    !is_world_regdom(last_request->alpha2)) {
+ 		REG_DBG_PRINT("Ignoring regulatory request %s "
+-			      "since the driver requires its own regulatory "
++			      "since the driver requires its own regulaotry "
+ 			      "domain to be set first",
+ 			      reg_initiator_name(initiator));
+ 		return true;

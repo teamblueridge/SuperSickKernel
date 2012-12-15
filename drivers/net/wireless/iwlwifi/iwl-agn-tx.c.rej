@@ -1,0 +1,58 @@
+--- drivers/net/wireless/iwlwifi/iwl-agn-tx.c
++++ drivers/net/wireless/iwlwifi/iwl-agn-tx.c
+@@ -467,55 +181,9 @@
+ 	}
+ 
+ 	spin_unlock(&priv->sta_lock);
+-
+-	/* Attach buffers to TFD */
+-	iwlagn_txq_attach_buf_to_tfd(priv, txq, txcmd_phys, firstlen, 1);
+-	if (secondlen > 0)
+-		iwlagn_txq_attach_buf_to_tfd(priv, txq, phys_addr,
+-					     secondlen, 0);
+-
+-	scratch_phys = txcmd_phys + sizeof(struct iwl_cmd_header) +
+-				offsetof(struct iwl_tx_cmd, scratch);
+-
+-	/* take back ownership of DMA buffer to enable update */
+-	pci_dma_sync_single_for_cpu(priv->pci_dev, txcmd_phys,
+-				    firstlen, PCI_DMA_BIDIRECTIONAL);
+-	tx_cmd->dram_lsb_ptr = cpu_to_le32(scratch_phys);
+-	tx_cmd->dram_msb_ptr = iwl_get_dma_hi_addr(scratch_phys);
+-
+-	IWL_DEBUG_TX(priv, "sequence nr = 0X%x\n",
+-		     le16_to_cpu(out_cmd->hdr.sequence));
+-	IWL_DEBUG_TX(priv, "tx_flags = 0X%x\n", le32_to_cpu(tx_cmd->tx_flags));
+-	iwl_print_hex_dump(priv, IWL_DL_TX, (u8 *)tx_cmd, sizeof(*tx_cmd));
+-	iwl_print_hex_dump(priv, IWL_DL_TX, (u8 *)tx_cmd->hdr, hdr_len);
+-
+-	/* Set up entry for this TFD in Tx byte-count array */
+-	if (info->flags & IEEE80211_TX_CTL_AMPDU)
+-		iwlagn_txq_update_byte_cnt_tbl(priv, txq,
+-					       le16_to_cpu(tx_cmd->len));
+-
+-	pci_dma_sync_single_for_device(priv->pci_dev, txcmd_phys,
+-				       firstlen, PCI_DMA_BIDIRECTIONAL);
+-
+-	trace_iwlwifi_dev_tx(priv,
+-			     &((struct iwl_tfd *)txq->tfds)[txq->q.write_ptr],
+-			     sizeof(struct iwl_tfd),
+-			     &out_cmd->hdr, firstlen,
+-			     skb->data + hdr_len, secondlen);
+-
+-	/* Tell device the write index *just past* this latest filled TFD */
+-	q->write_ptr = iwl_queue_inc_wrap(q->write_ptr, q->n_bd);
+-	iwl_txq_update_write_ptr(priv, txq);
+ 	spin_unlock_irqrestore(&priv->lock, flags);
+ 
+ 	/*
+-	 * At this point the frame is "transmitted" successfully
+-	 * and we will get a TX status notification eventually,
+-	 * regardless of the value of ret. "ret" only indicates
+-	 * whether or not we should update the write pointer.
+-	 */
+-
+-	/*
+ 	 * Avoid atomic ops if it isn't an associated client.
+ 	 * Also, if this is a packet for aggregation, don't
+ 	 * increase the counter because the ucode will stop

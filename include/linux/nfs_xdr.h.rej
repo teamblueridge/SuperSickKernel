@@ -1,0 +1,28 @@
+--- include/linux/nfs_xdr.h
++++ include/linux/nfs_xdr.h
+@@ -269,21 +281,23 @@
+ 	struct nfs_fattr *fattr;
+ 	const struct nfs_server *server;
+ 	struct nfs4_sequence_res seq_res;
++	int status;
+ };
+ 
+ struct nfs4_layoutcommit_data {
+ 	struct rpc_task task;
+ 	struct nfs_fattr fattr;
+-	struct pnfs_layout_segment *lseg;
++	struct list_head lseg_list;
+ 	struct rpc_cred *cred;
+ 	struct nfs4_layoutcommit_args args;
+ 	struct nfs4_layoutcommit_res res;
+ };
+ 
+ struct nfs4_layoutreturn_args {
+-	__u32   layout_type;
++	struct pnfs_layout_hdr *layout;
+ 	struct inode *inode;
+ 	nfs4_stateid stateid;
++	__u32   layout_type;
+ 	struct nfs4_sequence_args seq_args;
+ };
+ 

@@ -1,0 +1,13 @@
+--- fs/namei.c
++++ fs/namei.c
+@@ -2218,10 +2200,6 @@
+ 
+ 	path_to_nameidata(path, nd);
+ 	nd->inode = path->dentry->d_inode;
+-	/* Why this, you ask?  _Now_ we might have grown LOOKUP_JUMPED... */
+-	error = complete_walk(nd);
+-	if (error)
+-		goto exit;
+ 	error = -EISDIR;
+ 	if (S_ISDIR(nd->inode->i_mode))
+ 		goto exit;

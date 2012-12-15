@@ -1,0 +1,35 @@
+--- kernel/irq/irqdesc.c
++++ kernel/irq/irqdesc.c
+@@ -276,16 +273,8 @@
+ 	dynamic_irq_cleanup(irq);
+ }
+ 
+-static inline int alloc_descs(unsigned int start, unsigned int cnt, int node,
+-			      struct module *owner)
++static inline int alloc_descs(unsigned int start, unsigned int cnt, int node)
+ {
+-	u32 i;
+-
+-	for (i = 0; i < cnt; i++) {
+-		struct irq_desc *desc = irq_to_desc(start + i);
+-
+-		desc->owner = owner;
+-	}
+ 	return start;
+ }
+ 
+@@ -341,13 +330,11 @@
+  * @from:	Start the search from this irq number
+  * @cnt:	Number of consecutive irqs to allocate.
+  * @node:	Preferred node on which the irq descriptor should be allocated
+- * @owner:	Owning module (can be NULL)
+  *
+  * Returns the first irq number or error code
+  */
+ int __ref
+-__irq_alloc_descs(int irq, unsigned int from, unsigned int cnt, int node,
+-		  struct module *owner)
++irq_alloc_descs(int irq, unsigned int from, unsigned int cnt, int node)
+ {
+ 	int start, ret;
+ 

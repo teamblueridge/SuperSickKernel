@@ -136,6 +136,8 @@
 
 #define DP_EDP_CONFIGURATION_SET            0x10a
 
+#define DP_EDP_CONFIGURATION_SET            0x10a
+
 #define DP_LANE0_1_STATUS		    0x202
 #define DP_LANE2_3_STATUS		    0x203
 # define DP_LANE_CR_DONE		    (1 << 0)

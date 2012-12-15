@@ -1,0 +1,29 @@
+--- sound/soc/tegra/tegra_wm8903.c
++++ sound/soc/tegra/tegra_wm8903.c
+@@ -267,7 +266,7 @@
+ 		}
+ 		machine->gpio_requested |= GPIO_HP_MUTE;
+ 
+-		gpio_direction_output(pdata->gpio_hp_mute, 1);
++		gpio_direction_output(pdata->gpio_hp_mute, 0);
+ 	}
+ 
+ 	if (gpio_is_valid(pdata->gpio_int_mic_en)) {
+@@ -317,7 +315,7 @@
+ 	snd_soc_dapm_force_enable_pin(dapm, "Mic Bias");
+ 
+ 	/* FIXME: Calculate automatically based on DAPM routes? */
+-	if (!machine_is_harmony())
++	if (!machine_is_harmony() && !machine_is_ventana())
+ 		snd_soc_dapm_nc_pin(dapm, "IN1L");
+ 	if (!machine_is_seaboard() && !machine_is_aebl())
+ 		snd_soc_dapm_nc_pin(dapm, "IN1R");
+@@ -393,7 +391,7 @@
+ 	platform_set_drvdata(pdev, card);
+ 	snd_soc_card_set_drvdata(card, machine);
+ 
+-	if (machine_is_harmony()) {
++	if (machine_is_harmony() || machine_is_ventana()) {
+ 		card->dapm_routes = harmony_audio_map;
+ 		card->num_dapm_routes = ARRAY_SIZE(harmony_audio_map);
+ 	} else if (machine_is_seaboard()) {

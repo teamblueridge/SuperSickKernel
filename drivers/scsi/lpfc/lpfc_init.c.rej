@@ -1,0 +1,38 @@
+--- drivers/scsi/lpfc/lpfc_init.c
++++ drivers/scsi/lpfc/lpfc_init.c
+@@ -3632,7 +3630,8 @@
+ 			lpfc_sli4_fcf_dead_failthrough(phba);
+ 		} else {
+ 			/* Reset FCF roundrobin bmask for new discovery */
+-			lpfc_sli4_clear_fcf_rr_bmask(phba);
++			memset(phba->fcf.fcf_rr_bmask, 0,
++			       sizeof(*phba->fcf.fcf_rr_bmask));
+ 			/*
+ 			 * Handling fast FCF failover to a DEAD FCF event is
+ 			 * considered equalivant to receiving CVL to all vports.
+@@ -3718,7 +3717,8 @@
+ 				 * Reset FCF roundrobin bmask for new
+ 				 * discovery.
+ 				 */
+-				lpfc_sli4_clear_fcf_rr_bmask(phba);
++				memset(phba->fcf.fcf_rr_bmask, 0,
++				       sizeof(*phba->fcf.fcf_rr_bmask));
+ 		}
+ 		break;
+ 	default:
+@@ -9003,7 +8964,6 @@
+ 	}
+ 
+ 	INIT_LIST_HEAD(&phba->active_rrq_list);
+-	INIT_LIST_HEAD(&phba->fcf.fcf_pri_list);
+ 
+ 	/* Set up common device driver resources */
+ 	error = lpfc_setup_driver_resource_phase2(phba);
+@@ -9111,6 +9071,7 @@
+ 
+ 	/* Check if there are static vports to be created. */
+ 	lpfc_create_static_vport(phba);
++
+ 	return 0;
+ 
+ out_disable_intr:

@@ -1,0 +1,103 @@
+--- fs/fs-writeback.c
++++ fs/fs-writeback.c
+@@ -35,7 +35,9 @@
+ struct wb_writeback_work {
+ 	long nr_pages;
+ 	struct super_block *sb;
++	unsigned long *older_than_this;
+ 	enum writeback_sync_modes sync_mode;
++	unsigned int tagged_writepages:1;
+ 	unsigned int for_kupdate:1;
+ 	unsigned int range_cyclic:1;
+ 	unsigned int for_background:1;
+@@ -422,10 +432,19 @@
+ 			ret = err;
+ 	}
+ 
+-	spin_lock(&inode_wb_list_lock);
++	spin_lock(&wb->list_lock);
+ 	spin_lock(&inode->i_lock);
+ 	inode->i_state &= ~I_SYNC;
+ 	if (!(inode->i_state & I_FREEING)) {
++		/*
++		 * Sync livelock prevention. Each inode is tagged and synced in
++		 * one shot. If still dirty, it will be redirty_tail()'ed below.
++		 * Update the dirty time to prevent enqueue and sync it again.
++		 */
++		if ((inode->i_state & I_DIRTY) &&
++		    (wbc->sync_mode == WB_SYNC_ALL || wbc->tagged_writepages))
++			inode->dirtied_when = jiffies;
++
+ 		if (mapping_tagged(mapping, PAGECACHE_TAG_DIRTY)) {
+ 			/*
+ 			 * We didn't write back all the pages.  nfs_writepages()
+@@ -685,47 +733,16 @@
+ static long wb_writeback(struct bdi_writeback *wb,
+ 			 struct wb_writeback_work *work)
+ {
+-	struct writeback_control wbc = {
+-		.sync_mode		= work->sync_mode,
+-		.older_than_this	= NULL,
+-		.for_kupdate		= work->for_kupdate,
+-		.for_background		= work->for_background,
+-		.range_cyclic		= work->range_cyclic,
+-	};
++	unsigned long wb_start = jiffies;
++	long nr_pages = work->nr_pages;
+ 	unsigned long oldest_jif;
+-	long wrote = 0;
+-	long write_chunk;
+ 	struct inode *inode;
++	long progress;
+ 
+-	if (wbc.for_kupdate) {
+-		wbc.older_than_this = &oldest_jif;
+-		oldest_jif = jiffies -
+-				msecs_to_jiffies(dirty_expire_interval * 10);
+-	}
+-	if (!wbc.range_cyclic) {
+-		wbc.range_start = 0;
+-		wbc.range_end = LLONG_MAX;
+-	}
++	oldest_jif = jiffies;
++	work->older_than_this = &oldest_jif;
+ 
+-	/*
+-	 * WB_SYNC_ALL mode does livelock avoidance by syncing dirty
+-	 * inodes/pages in one big loop. Setting wbc.nr_to_write=LONG_MAX
+-	 * here avoids calling into writeback_inodes_wb() more than once.
+-	 *
+-	 * The intended call sequence for WB_SYNC_ALL writeback is:
+-	 *
+-	 *      wb_writeback()
+-	 *          __writeback_inodes_sb()     <== called only once
+-	 *              write_cache_pages()     <== called once for each inode
+-	 *                   (quickly) tag currently dirty pages
+-	 *                   (maybe slowly) sync all tagged pages
+-	 */
+-	if (wbc.sync_mode == WB_SYNC_NONE)
+-		write_chunk = MAX_WRITEBACK_PAGES;
+-	else
+-		write_chunk = LONG_MAX;
+-
+-	wbc.wb_start = jiffies; /* livelock avoidance */
++	spin_lock(&wb->list_lock);
+ 	for (;;) {
+ 		/*
+ 		 * Stop writeback when nr_pages has been consumed
+@@ -1227,10 +1246,11 @@
+ {
+ 	DECLARE_COMPLETION_ONSTACK(done);
+ 	struct wb_writeback_work work = {
+-		.sb		= sb,
+-		.sync_mode	= WB_SYNC_NONE,
+-		.done		= &done,
+-		.nr_pages	= nr,
++		.sb			= sb,
++		.sync_mode		= WB_SYNC_NONE,
++		.tagged_writepages	= 1,
++		.done			= &done,
++		.nr_pages		= nr,
+ 	};
+ 
+ 	WARN_ON(!rwsem_is_locked(&sb->s_umount));

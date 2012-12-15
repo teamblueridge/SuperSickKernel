@@ -1,0 +1,202 @@
+--- drivers/net/r8169.c
++++ drivers/net/r8169.c
+@@ -71,8 +73,6 @@
+ #define MAC_ADDR_LEN	6
+ 
+ #define MAX_READ_REQUEST_SHIFT	12
+-#define RX_FIFO_THRESH	7	/* 7 means NO threshold, Rx buffer level before first PCI xfer. */
+-#define RX_DMA_BURST	6	/* Maximum PCI burst, '6' is 1024 */
+ #define TX_DMA_BURST	6	/* Maximum PCI burst, '6' is 1024 */
+ #define SafeMtu		0x1c20	/* ... actually life sucks beyond ~7k */
+ #define InterFrameGap	0x03	/* 3 means InterFrameGap = the shortest one */
+@@ -218,7 +219,9 @@
+ 	[RTL_GIGA_MAC_VER_32] =
+ 		_R("RTL8168e/8111e",	RTL_TD_1, FIRMWARE_8168E_1),
+ 	[RTL_GIGA_MAC_VER_33] =
+-		_R("RTL8168e/8111e",	RTL_TD_1, FIRMWARE_8168E_2)
++		_R("RTL8168e/8111e",	RTL_TD_1, FIRMWARE_8168E_2),
++	[RTL_GIGA_MAC_VER_34] =
++		_R("RTL8168evl/8111evl",RTL_TD_1, FIRMWARE_8168E_3)
+ };
+ #undef _R
+ 
+@@ -239,6 +242,7 @@
+ 	{ PCI_DEVICE(PCI_VENDOR_ID_REALTEK,	0x8168), 0, 0, RTL_CFG_1 },
+ 	{ PCI_DEVICE(PCI_VENDOR_ID_REALTEK,	0x8169), 0, 0, RTL_CFG_0 },
+ 	{ PCI_DEVICE(PCI_VENDOR_ID_DLINK,	0x4300), 0, 0, RTL_CFG_0 },
++	{ PCI_DEVICE(PCI_VENDOR_ID_DLINK,	0x4302), 0, 0, RTL_CFG_0 },
+ 	{ PCI_DEVICE(PCI_VENDOR_ID_AT,		0xc107), 0, 0, RTL_CFG_0 },
+ 	{ PCI_DEVICE(0x16ec,			0x0116), 0, 0, RTL_CFG_0 },
+ 	{ PCI_VENDOR_ID_LINKSYS,		0x1032,
+@@ -406,6 +426,7 @@
+ 	RxOK		= 0x0001,
+ 
+ 	/* RxStatusDesc */
++	RxBOVF	= (1 << 24),
+ 	RxFOVF	= (1 << 23),
+ 	RxRWT	= (1 << 22),
+ 	RxRES	= (1 << 21),
+@@ -675,16 +694,27 @@
+ 	unsigned int (*phy_reset_pending)(struct rtl8169_private *tp);
+ 	unsigned int (*link_ok)(void __iomem *);
+ 	int (*do_ioctl)(struct rtl8169_private *tp, struct mii_ioctl_data *data, int cmd);
+-	int pcie_cap;
+ 	struct delayed_work task;
+ 	unsigned features;
+ 
+ 	struct mii_if_info mii;
+ 	struct rtl8169_counters counters;
+ 	u32 saved_wolopts;
++	u32 opts1_mask;
++
++	struct rtl_fw {
++		const struct firmware *fw;
++
++#define RTL_VER_SIZE		32
+ 
+-	const struct firmware *fw;
+-#define RTL_FIRMWARE_UNKNOWN	ERR_PTR(-EAGAIN);
++		char version[RTL_VER_SIZE];
++
++		struct rtl_fw_phy_action {
++			__le32 *code;
++			size_t size;
++		} phy_action;
++	} *rtl_fw;
++#define RTL_FIRMWARE_UNKNOWN	ERR_PTR(-EAGAIN)
+ };
+ 
+ MODULE_AUTHOR("Realtek and the Linux r8169 crew <netdev@vger.kernel.org>");
+@@ -719,9 +750,6 @@
+ static void rtl8169_rx_clear(struct rtl8169_private *tp);
+ static int rtl8169_poll(struct napi_struct *napi, int budget);
+ 
+-static const unsigned int rtl8169_rx_config =
+-	(RX_FIFO_THRESH << RxCfgFIFOShift) | (RX_DMA_BURST << RxCfgDMAShift);
+-
+ static u32 ocp_read(struct rtl8169_private *tp, u8 mask, u16 reg)
+ {
+ 	void __iomem *ioaddr = tp->mmio_addr;
+@@ -1125,13 +1211,6 @@
+ 	RTL_W16(IntrStatus, 0xffff);
+ }
+ 
+-static void rtl8169_asic_down(void __iomem *ioaddr)
+-{
+-	RTL_W8(ChipCmd, 0x00);
+-	rtl8169_irq_mask_and_ack(ioaddr);
+-	RTL_R16(CPlusCmd);
+-}
+-
+ static unsigned int rtl8169_tbi_reset_pending(struct rtl8169_private *tp)
+ {
+ 	void __iomem *ioaddr = tp->mmio_addr;
+@@ -3448,14 +3778,8 @@
+ 	    tp->mac_version == RTL_GIGA_MAC_VER_33)
+ 		rtl_ephy_write(ioaddr, 0x19, 0xff64);
+ 
+-	if (__rtl8169_get_wol(tp) & WAKE_ANY) {
+-		rtl_writephy(tp, 0x1f, 0x0000);
+-		rtl_writephy(tp, MII_BMCR, 0x0000);
+-
+-		RTL_W32(RxConfig, RTL_R32(RxConfig) |
+-			AcceptBroadcast | AcceptMulticast | AcceptMyPhys);
++	if (rtl_wol_pll_power_down(tp))
+ 		return;
+-	}
+ 
+ 	r8168_phy_power_down(tp);
+ 
+@@ -4245,9 +4642,7 @@
+ 
+ static void rtl_enable_clock_request(struct pci_dev *pdev)
+ {
+-	struct net_device *dev = pci_get_drvdata(pdev);
+-	struct rtl8169_private *tp = netdev_priv(dev);
+-	int cap = tp->pcie_cap;
++	int cap = pci_pcie_cap(pdev);
+ 
+ 	if (cap) {
+ 		u16 ctl;
+@@ -5353,7 +5784,7 @@
+ 		u32 status;
+ 
+ 		rmb();
+-		status = le32_to_cpu(desc->opts1);
++		status = le32_to_cpu(desc->opts1) & tp->opts1_mask;
+ 
+ 		if (status & DescOwn)
+ 			break;
+@@ -5442,7 +5873,7 @@
+ 		 * the chip, so just exit the loop.
+ 		 */
+ 		if (unlikely(!netif_running(dev))) {
+-			rtl8169_asic_down(ioaddr);
++			rtl8169_hw_reset(tp);
+ 			break;
+ 		}
+ 
+@@ -5565,7 +5996,7 @@
+ 
+ 	spin_lock_irq(&tp->lock);
+ 
+-	rtl8169_asic_down(ioaddr);
++	rtl8169_hw_reset(tp);
+ 	/*
+ 	 * At this point device interrupts can not be enabled in any function,
+ 	 * as netif_running is not true (rtl8169_interrupt, rtl8169_reset_task,
+@@ -5805,11 +6235,30 @@
+ 
+ #endif /* !CONFIG_PM */
+ 
++static void rtl_wol_shutdown_quirk(struct rtl8169_private *tp)
++{
++	void __iomem *ioaddr = tp->mmio_addr;
++
++	/* WoL fails with 8168b when the receiver is disabled. */
++	switch (tp->mac_version) {
++	case RTL_GIGA_MAC_VER_11:
++	case RTL_GIGA_MAC_VER_12:
++	case RTL_GIGA_MAC_VER_17:
++		pci_clear_master(tp->pci_dev);
++
++		RTL_W8(ChipCmd, CmdRxEnb);
++		/* PCI commit */
++		RTL_R8(ChipCmd);
++		break;
++	default:
++		break;
++	}
++}
++
+ static void rtl_shutdown(struct pci_dev *pdev)
+ {
+ 	struct net_device *dev = pci_get_drvdata(pdev);
+ 	struct rtl8169_private *tp = netdev_priv(dev);
+-	void __iomem *ioaddr = tp->mmio_addr;
+ 
+ 	rtl8169_net_suspend(dev);
+ 
+@@ -5818,18 +6267,14 @@
+ 
+ 	spin_lock_irq(&tp->lock);
+ 
+-	rtl8169_asic_down(ioaddr);
++	rtl8169_hw_reset(tp);
+ 
+ 	spin_unlock_irq(&tp->lock);
+ 
+ 	if (system_state == SYSTEM_POWER_OFF) {
+-		/* WoL fails with some 8168 when the receiver is disabled. */
+-		if (tp->features & RTL_FEATURE_WOL) {
+-			pci_clear_master(pdev);
+-
+-			RTL_W8(ChipCmd, CmdRxEnb);
+-			/* PCI commit */
+-			RTL_R8(ChipCmd);
++		if (__rtl8169_get_wol(tp) & WAKE_ANY) {
++			rtl_wol_suspend_quirk(tp);
++			rtl_wol_shutdown_quirk(tp);
+ 		}
+ 
+ 		pci_wake_from_d3(pdev, true);

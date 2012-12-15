@@ -1,0 +1,15 @@
+--- sound/soc/codecs/Kconfig
++++ sound/soc/codecs/Kconfig
+@@ -250,10 +264,11 @@
+ 	tristate
+ 
+ config SND_SOC_TWL4030
+-	select TWL4030_CODEC
++	select MFD_TWL4030_AUDIO
+ 	tristate
+ 
+ config SND_SOC_TWL6040
++	select TWL6040_CORE
+ 	tristate
+ 
+ config SND_SOC_UDA134X

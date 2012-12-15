@@ -1,0 +1,11 @@
+--- fs/eventpoll.c
++++ fs/eventpoll.c
+@@ -1267,7 +1256,7 @@
+ 	struct rb_node *rbp;
+ 	struct epitem *epi;
+ 
+-	mutex_lock_nested(&ep->mtx, call_nests + 1);
++	mutex_lock(&ep->mtx);
+ 	for (rbp = rb_first(&ep->rbr); rbp; rbp = rb_next(rbp)) {
+ 		epi = rb_entry(rbp, struct epitem, rbn);
+ 		if (unlikely(is_file_epoll(epi->ffd.file))) {

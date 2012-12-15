@@ -1,0 +1,19 @@
+--- kernel/power/Kconfig
++++ kernel/power/Kconfig
+@@ -224,6 +224,14 @@
+ 	  implementations a ready to use framework to manage OPPs.
+ 	  For more information, read <file:Documentation/power/opp.txt>
+ 
+-config PM_RUNTIME_CLK
++config PM_CLK
+ 	def_bool y
+-	depends on PM_RUNTIME && HAVE_CLK
++	depends on PM && HAVE_CLK
++
++config PM_GENERIC_DOMAINS
++	bool
++	depends on PM
++
++config PM_GENERIC_DOMAINS_RUNTIME
++	def_bool y
++	depends on PM_RUNTIME && PM_GENERIC_DOMAINS

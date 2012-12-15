@@ -1,0 +1,28 @@
+--- arch/powerpc/kernel/prom_init.c
++++ arch/powerpc/kernel/prom_init.c
+@@ -1830,13 +1830,11 @@
+ 		if (room > DEVTREE_CHUNK_SIZE)
+ 			room = DEVTREE_CHUNK_SIZE;
+ 		if (room < PAGE_SIZE)
+-			prom_panic("No memory for flatten_device_tree "
+-				   "(no room)\n");
++			prom_panic("No memory for flatten_device_tree (no room)");
+ 		chunk = alloc_up(room, 0);
+ 		if (chunk == 0)
+-			prom_panic("No memory for flatten_device_tree "
+-				   "(claim failed)\n");
+-		*mem_end = chunk + room;
++			prom_panic("No memory for flatten_device_tree (claim failed)");
++		*mem_end = RELOC(alloc_top);
+ 	}
+ 
+ 	ret = (void *)*mem_start;
+@@ -2044,7 +2042,7 @@
+ 
+ 	/*
+ 	 * Check how much room we have between alloc top & bottom (+/- a
+-	 * few pages), crop to 1MB, as this is our "chunk" size
++	 * few pages), crop to 4Mb, as this is our "chuck" size
+ 	 */
+ 	room = RELOC(alloc_top) - RELOC(alloc_bottom) - 0x4000;
+ 	if (room > DEVTREE_CHUNK_SIZE)

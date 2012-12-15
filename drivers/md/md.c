@@ -61,11 +61,6 @@
 static void autostart_arrays(int part);
 #endif
 
-/* pers_list is a list of registered personalities protected
- * by pers_lock.
- * pers_lock does extra service to protect accesses to
- * mddev->thread when the mutex cannot be held.
- */
 static LIST_HEAD(pers_list);
 static DEFINE_SPINLOCK(pers_lock);
 
@@ -697,12 +692,7 @@ static void mddev_unlock(mddev_t * mddev)
 	} else
 		mutex_unlock(&mddev->reconfig_mutex);
 
-	/* was we've dropped the mutex we need a spinlock to
-	 * make sur the thread doesn't disappear
-	 */
-	spin_lock(&pers_lock);
 	md_wakeup_thread(mddev->thread);
-	spin_unlock(&pers_lock);
 }
 
 static mdk_rdev_t * find_rdev_nr(mddev_t *mddev, int nr)
@@ -1137,7 +1127,7 @@ static int super_90_validate(mddev_t *mddev, mdk_rdev_t *rdev)
 		mddev->clevel[0] = 0;
 		mddev->layout = sb->layout;
 		mddev->raid_disks = sb->raid_disks;
-		mddev->dev_sectors = ((sector_t)sb->size) * 2;
+		mddev->dev_sectors = sb->size * 2;
 		mddev->events = ev1;
 		mddev->bitmap_info.offset = 0;
 		mddev->bitmap_info.default_offset = MD_SB_BYTES >> 9;
@@ -6201,18 +6191,11 @@ mdk_thread_t *md_register_thread(void (*run) (mddev_t *), mddev_t *mddev,
 	return thread;
 }
 
-void md_unregister_thread(mdk_thread_t **threadp)
+void md_unregister_thread(mdk_thread_t *thread)
 {
-	mdk_thread_t *thread = *threadp;
 	if (!thread)
 		return;
 	dprintk("interrupting MD-thread pid %d\n", task_pid_nr(thread->tsk));
-	/* Locking ensures that mddev_unlock does not wake_up a
-	 * non-existent thread
-	 */
-	spin_lock(&pers_lock);
-	*threadp = NULL;
-	spin_unlock(&pers_lock);
 
 	kthread_stop(thread->tsk);
 	kfree(thread);
@@ -7147,7 +7130,8 @@ static void reap_sync_thread(mddev_t *mddev)
 	mdk_rdev_t *rdev;
 
 	/* resync has finished, collect result */
-	md_unregister_thread(&mddev->sync_thread);
+	md_unregister_thread(mddev->sync_thread);
+	mddev->sync_thread = NULL;
 	if (!test_bit(MD_RECOVERY_INTR, &mddev->recovery) &&
 	    !test_bit(MD_RECOVERY_REQUESTED, &mddev->recovery)) {
 		/* success...*/
@@ -7208,6 +7192,9 @@ void md_check_recovery(mddev_t *mddev)
 
 	if (mddev->bitmap)
 		bitmap_daemon_work(mddev);
+
+	if (mddev->ro)
+		return;
 
 	if (mddev->ro)
 		return;

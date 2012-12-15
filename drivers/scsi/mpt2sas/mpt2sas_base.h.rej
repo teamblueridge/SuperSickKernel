@@ -1,0 +1,38 @@
+--- drivers/scsi/mpt2sas/mpt2sas_base.h
++++ drivers/scsi/mpt2sas/mpt2sas_base.h
+@@ -161,12 +161,15 @@
+ 				"Intel Integrated RAID Module RMS2LL080"
+ #define MPT2SAS_INTEL_RMS2LL040_BRANDING	\
+ 				"Intel Integrated RAID Module RMS2LL040"
++#define MPT2SAS_INTEL_RS25GB008_BRANDING       \
++				"Intel(R) RAID Controller RS25GB008"
+ 
+ /*
+  * Intel HBA SSDIDs
+  */
+ #define MPT2SAS_INTEL_RMS2LL080_SSDID          0x350E
+ #define MPT2SAS_INTEL_RMS2LL040_SSDID          0x350F
++#define MPT2SAS_INTEL_RS25GB008_SSDID          0x3000
+ 
+ 
+ /*
+@@ -807,8 +868,8 @@
+ 	u32		event_masks[MPI2_EVENT_NOTIFY_EVENTMASK_WORDS];
+ 
+ 	/* static config pages */
+-	Mpi2IOCFactsReply_t facts;
+-	Mpi2PortFactsReply_t *pfacts;
++	struct mpt2sas_facts facts;
++	struct mpt2sas_port_facts *pfacts;
+ 	Mpi2ManufacturingPage0_t manu_pg0;
+ 	Mpi2BiosPage2_t	bios_pg2;
+ 	Mpi2BiosPage3_t	bios_pg3;
+@@ -898,7 +959,7 @@
+ 
+ 	/* reply free queue */
+ 	u16 		reply_free_queue_depth;
+-	u32		*reply_free;
++	__le32		*reply_free;
+ 	dma_addr_t	reply_free_dma;
+ 	struct dma_pool *reply_free_dma_pool;
+ 	u32		reply_free_host_index;

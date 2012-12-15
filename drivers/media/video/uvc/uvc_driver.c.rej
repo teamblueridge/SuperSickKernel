@@ -1,0 +1,11 @@
+--- drivers/media/video/uvc/uvc_driver.c
++++ drivers/media/video/uvc/uvc_driver.c
+@@ -1961,7 +1962,7 @@
+ 
+ 	list_for_each_entry(stream, &dev->streams, list) {
+ 		if (stream->intf == intf)
+-			return uvc_video_resume(stream);
++			return uvc_video_resume(stream, reset);
+ 	}
+ 
+ 	uvc_trace(UVC_TRACE_SUSPEND, "Resume: video streaming USB interface "

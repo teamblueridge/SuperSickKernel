@@ -47,7 +47,7 @@
 #include <linux/cciss_ioctl.h>
 #include <linux/string.h>
 #include <linux/bitmap.h>
-#include <asm/atomic.h>
+#include <linux/atomic.h>
 #include <linux/kthread.h>
 #include "hpsa_cmd.h"
 #include "hpsa.h"
@@ -1231,8 +1231,8 @@ static void complete_scsi_command(struct CommandList *cp)
 		dev_warn(&h->pdev->dev, "cp %p reports abort failed\n", cp);
 		break;
 	case CMD_UNSOLICITED_ABORT:
-		cmd->result = DID_RESET << 16;
-		dev_warn(&h->pdev->dev, "cp %p aborted do to an unsolicited "
+		cmd->result = DID_SOFT_ERROR << 16; /* retry the command */
+		dev_warn(&h->pdev->dev, "cp %p aborted due to an unsolicited "
 			"abort\n", cp);
 		break;
 	case CMD_TIMEOUT:
@@ -1601,6 +1601,16 @@ static int hpsa_update_device_info(struct ctlr_info *h,
 		hpsa_get_raid_level(h, scsi3addr, &this_device->raid_level);
 	else
 		this_device->raid_level = RAID_UNKNOWN;
+
+	if (is_OBDR_device) {
+		/* See if this is a One-Button-Disaster-Recovery device
+		 * by looking for "$DR-10" at offset 43 in inquiry data.
+		 */
+		obdr_sig = &inq_buff[OBDR_SIG_OFFSET];
+		*is_OBDR_device = (this_device->devtype == TYPE_ROM &&
+					strncmp(obdr_sig, OBDR_TAPE_SIG,
+						OBDR_SIG_LEN) == 0);
+	}
 
 	if (is_OBDR_device) {
 		/* See if this is a One-Button-Disaster-Recovery device
@@ -3298,13 +3308,6 @@ static int hpsa_controller_hard_reset(struct pci_dev *pdev,
 		pmcsr &= ~PCI_PM_CTRL_STATE_MASK;
 		pmcsr |= PCI_D0;
 		pci_write_config_word(pdev, pos + PCI_PM_CTRL, pmcsr);
-
-		/*
-		 * The P600 requires a small delay when changing states.
-		 * Otherwise we may think the board did not reset and we bail.
-		 * This for kdump only and is particular to the P600.
-		 */
-		msleep(500);
 	}
 	return 0;
 }

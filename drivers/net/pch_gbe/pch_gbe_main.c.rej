@@ -1,0 +1,104 @@
+--- drivers/net/pch_gbe/pch_gbe_main.c
++++ drivers/net/pch_gbe/pch_gbe_main.c
+@@ -33,11 +32,15 @@
+ #define PCH_GBE_WATCHDOG_PERIOD		(1 * HZ)	/* watchdog time */
+ #define PCH_GBE_COPYBREAK_DEFAULT	256
+ #define PCH_GBE_PCI_BAR			1
++#define PCH_GBE_RESERVE_MEMORY		0x200000	/* 2MB */
+ 
+ /* Macros for ML7223 */
+ #define PCI_VENDOR_ID_ROHM			0x10db
+ #define PCI_DEVICE_ID_ROHM_ML7223_GBE		0x8013
+ 
++/* Macros for ML7831 */
++#define PCI_DEVICE_ID_ROHM_ML7831_GBE		0x8802
++
+ #define PCH_GBE_TX_WEIGHT         64
+ #define PCH_GBE_RX_WEIGHT         64
+ #define PCH_GBE_RX_BUFFER_WRITE   16
+@@ -746,13 +779,6 @@
+ 	iowrite32(rdba, &hw->reg->RX_DSC_BASE);
+ 	iowrite32(rdlen, &hw->reg->RX_DSC_SIZE);
+ 	iowrite32((rdba + rdlen), &hw->reg->RX_DSC_SW_P);
+-
+-	/* Enables Receive DMA */
+-	rxdma = ioread32(&hw->reg->DMA_CTRL);
+-	rxdma |= PCH_GBE_RX_DMA_EN;
+-	iowrite32(rxdma, &hw->reg->DMA_CTRL);
+-	/* Enables Receive */
+-	iowrite32(PCH_GBE_MRE_MAC_RX_EN, &hw->reg->MAC_RX_EN);
+ }
+ 
+ /**
+@@ -1761,9 +1805,15 @@
+ 		pr_err("Error: can't bring device up\n");
+ 		return err;
+ 	}
++	err = pch_gbe_alloc_rx_buffers_pool(adapter, rx_ring, rx_ring->count);
++	if (err) {
++		pr_err("Error: can't bring device up\n");
++		return err;
++	}
+ 	pch_gbe_alloc_tx_buffers(adapter, tx_ring);
+ 	pch_gbe_alloc_rx_buffers(adapter, rx_ring, rx_ring->count);
+ 	adapter->tx_queue_len = netdev->tx_queue_len;
++	pch_gbe_start_receive(&adapter->hw);
+ 
+ 	mod_timer(&adapter->watchdog_timer, jiffies);
+ 
+@@ -2165,33 +2234,39 @@
+ {
+ 	struct pch_gbe_adapter *adapter =
+ 	    container_of(napi, struct pch_gbe_adapter, napi);
+-	struct net_device *netdev = adapter->netdev;
+ 	int work_done = 0;
+ 	bool poll_end_flag = false;
+ 	bool cleaned = false;
++	u32 int_en;
+ 
+ 	pr_debug("budget : %d\n", budget);
+ 
+-	/* Keep link state information with original netdev */
+-	if (!netif_carrier_ok(netdev)) {
+-		poll_end_flag = true;
+-	} else {
+-		cleaned = pch_gbe_clean_tx(adapter, adapter->tx_ring);
+-		pch_gbe_clean_rx(adapter, adapter->rx_ring, &work_done, budget);
++	pch_gbe_clean_rx(adapter, adapter->rx_ring, &work_done, budget);
++	cleaned = pch_gbe_clean_tx(adapter, adapter->tx_ring);
+ 
+-		if (cleaned)
+-			work_done = budget;
+-		/* If no Tx and not enough Rx work done,
+-		 * exit the polling mode
+-		 */
+-		if ((work_done < budget) || !netif_running(netdev))
+-			poll_end_flag = true;
+-	}
++	if (!cleaned)
++		work_done = budget;
++	/* If no Tx and not enough Rx work done,
++	 * exit the polling mode
++	 */
++	if (work_done < budget)
++		poll_end_flag = true;
+ 
+ 	if (poll_end_flag) {
+ 		napi_complete(napi);
++		if (adapter->rx_stop_flag) {
++			adapter->rx_stop_flag = false;
++			pch_gbe_start_receive(&adapter->hw);
++		}
+ 		pch_gbe_irq_enable(adapter);
+-	}
++	} else
++		if (adapter->rx_stop_flag) {
++			adapter->rx_stop_flag = false;
++			pch_gbe_start_receive(&adapter->hw);
++			int_en = ioread32(&adapter->hw.reg->INT_EN);
++			iowrite32((int_en | PCH_GBE_INT_RX_FIFO_ERR),
++				&adapter->hw.reg->INT_EN);
++		}
+ 
+ 	pr_debug("poll_end_flag : %d  work_done : %d  budget : %d\n",
+ 		 poll_end_flag, work_done, budget);

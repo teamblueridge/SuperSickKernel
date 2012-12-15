@@ -1,0 +1,24 @@
+--- drivers/char/random.c
++++ drivers/char/random.c
+@@ -1631,15 +1947,17 @@
+  * value is not cryptographically secure but for several uses the cost of
+  * depleting entropy is too high
+  */
+-DEFINE_PER_CPU(__u32 [MD5_DIGEST_WORDS], get_random_int_hash);
++DEFINE_PER_CPU(__u32 [4], get_random_int_hash);
+ unsigned int get_random_int(void)
+ {
++	struct keydata *keyptr;
+ 	__u32 *hash = get_cpu_var(get_random_int_hash);
+-	unsigned int ret;
++	int ret;
+ 
++	keyptr = get_keyptr();
+ 	hash[0] += current->pid + jiffies + get_cycles();
+-	md5_transform(hash, random_int_secret);
+-	ret = hash[0];
++
++	ret = half_md4_transform(hash, keyptr->secret);
+ 	put_cpu_var(get_random_int_hash);
+ 
+ 	return ret;

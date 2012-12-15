@@ -1,0 +1,35 @@
+--- drivers/md/bitmap.c
++++ drivers/md/bitmap.c
+@@ -1846,24 +1811,14 @@
+ 	}
+ 	bitmap_close_sync(bitmap);
+ 
+-	if (mddev->bitmap_info.log) {
+-		unsigned long i;
+-		struct dm_dirty_log *log = mddev->bitmap_info.log;
+-		for (i = 0; i < bitmap->chunks; i++)
+-			if (!log->type->in_sync(log, i, 1))
+-				bitmap_set_memory_bits(bitmap,
+-						       (sector_t)i << CHUNK_BLOCK_SHIFT(bitmap),
+-						       1);
+-	} else {
+-		sector_t start = 0;
+-		if (mddev->degraded == 0
+-		    || bitmap->events_cleared == mddev->events)
+-			/* no need to keep dirty bits to optimise a
+-			 * re-add of a missing device */
+-			start = mddev->recovery_cp;
+-
+-		err = bitmap_init_from_disk(bitmap, start);
+-	}
++	if (mddev->degraded == 0
++	    || bitmap->events_cleared == mddev->events)
++		/* no need to keep dirty bits to optimise a
++		 * re-add of a missing device */
++		start = mddev->recovery_cp;
++
++	err = bitmap_init_from_disk(bitmap, start);
++
+ 	if (err)
+ 		goto out;
+ 

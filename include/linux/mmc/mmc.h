@@ -21,8 +21,8 @@
  *          15 May 2002
  */
 
-#ifndef MMC_MMC_H
-#define MMC_MMC_H
+#ifndef LINUX_MMC_MMC_H
+#define LINUX_MMC_MMC_H
 
 #define EXT_CSD_CMD_SET_ZERO		0
 
@@ -142,6 +142,16 @@ static inline bool mmc_op_multi(u32 opcode)
 #define R1_READY_FOR_DATA	(1 << 8)	/* sx, a */
 #define R1_SWITCH_ERROR		(1 << 7)	/* sx, c */
 #define R1_APP_CMD		(1 << 5)	/* sr, c */
+
+#define R1_STATE_IDLE	0
+#define R1_STATE_READY	1
+#define R1_STATE_IDENT	2
+#define R1_STATE_STBY	3
+#define R1_STATE_TRAN	4
+#define R1_STATE_DATA	5
+#define R1_STATE_RCV	6
+#define R1_STATE_PRG	7
+#define R1_STATE_DIS	8
 
 #define R1_STATE_IDLE	0
 #define R1_STATE_READY	1
@@ -342,5 +352,4 @@ struct _mmc_csd {
 #define MMC_SWITCH_MODE_CLEAR_BITS	0x02	/* Clear bits which are 1 in value */
 #define MMC_SWITCH_MODE_WRITE_BYTE	0x03	/* Set target to value */
 
-#endif  /* MMC_MMC_PROTOCOL_H */
-
+#endif /* LINUX_MMC_MMC_H */

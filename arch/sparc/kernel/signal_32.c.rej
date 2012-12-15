@@ -1,0 +1,85 @@
+--- arch/sparc/kernel/signal_32.c
++++ arch/sparc/kernel/signal_32.c
+@@ -60,13 +58,12 @@
+ 
+ static int _sigpause_common(old_sigset_t set)
+ {
+-	sigset_t blocked;
+-
++	set &= _BLOCKABLE;
++	spin_lock_irq(&current->sighand->siglock);
+ 	current->saved_sigmask = current->blocked;
+-
+-	set &= _BLOCKABLE;
+-	siginitset(&blocked, set);
+-	set_current_blocked(&blocked);
++	siginitset(&current->blocked, set);
++	recalc_sigpending();
++	spin_unlock_irq(&current->sighand->siglock);
+ 
+ 	current->state = TASK_INTERRUPTIBLE;
+ 	schedule();
+@@ -166,7 +191,10 @@
+ 		goto segv_and_exit;
+ 
+ 	sigdelsetmask(&set, ~_BLOCKABLE);
+-	set_current_blocked(&set);
++	spin_lock_irq(&current->sighand->siglock);
++	current->blocked = set;
++	recalc_sigpending();
++	spin_unlock_irq(&current->sighand->siglock);
+ 	return;
+ 
+ segv_and_exit:
+@@ -226,14 +254,11 @@
+ 	do_sigaltstack((const stack_t __user *) &st, NULL, (unsigned long)sf);
+ 	set_fs(old_fs);
+ 
+-	err |= __get_user(rwin_save, &sf->rwin_save);
+-	if (!err && rwin_save) {
+-		if (restore_rwin_state(rwin_save))
+-			goto segv;
+-	}
+-
+ 	sigdelsetmask(&set, ~_BLOCKABLE);
+-	set_current_blocked(&set);
++	spin_lock_irq(&current->sighand->siglock);
++	current->blocked = set;
++	recalc_sigpending();
++	spin_unlock_irq(&current->sighand->siglock);
+ 	return;
+ segv:
+ 	force_sig(SIGSEGV, current);
+@@ -485,7 +504,6 @@
+ handle_signal(unsigned long signr, struct k_sigaction *ka,
+ 	      siginfo_t *info, sigset_t *oldset, struct pt_regs *regs)
+ {
+-	sigset_t blocked;
+ 	int err;
+ 
+ 	if (ka->sa.sa_flags & SA_SIGINFO)
+@@ -496,10 +514,12 @@
+ 	if (err)
+ 		return err;
+ 
+-	sigorsets(&blocked, &current->blocked, &ka->sa.sa_mask);
++	spin_lock_irq(&current->sighand->siglock);
++	sigorsets(&current->blocked,&current->blocked,&ka->sa.sa_mask);
+ 	if (!(ka->sa.sa_flags & SA_NOMASK))
+-		sigaddset(&blocked, signr);
+-	set_current_blocked(&blocked);
++		sigaddset(&current->blocked, signr);
++	recalc_sigpending();
++	spin_unlock_irq(&current->sighand->siglock);
+ 
+ 	tracehook_signal_handler(signr, info, ka, regs, 0);
+ 
+@@ -595,7 +615,7 @@
+ 	 */
+ 	if (test_thread_flag(TIF_RESTORE_SIGMASK)) {
+ 		clear_thread_flag(TIF_RESTORE_SIGMASK);
+-		set_current_blocked(&current->saved_sigmask);
++		sigprocmask(SIG_SETMASK, &current->saved_sigmask, NULL);
+ 	}
+ }
+ 

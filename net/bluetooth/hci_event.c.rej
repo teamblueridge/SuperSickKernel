@@ -1,0 +1,180 @@
+--- net/bluetooth/hci_event.c
++++ net/bluetooth/hci_event.c
+@@ -58,8 +60,8 @@
+ 	if (status)
+ 		return;
+ 
+-	if (test_bit(HCI_MGMT, &hdev->flags) &&
+-				test_and_clear_bit(HCI_INQUIRY, &hdev->flags))
++	if (test_and_clear_bit(HCI_INQUIRY, &hdev->flags) &&
++			test_bit(HCI_MGMT, &hdev->flags))
+ 		mgmt_discovering(hdev->id, 0);
+ 
+ 	hci_req_complete(hdev, HCI_OP_INQUIRY_CANCEL, status);
+@@ -76,8 +78,8 @@
+ 	if (status)
+ 		return;
+ 
+-	if (test_bit(HCI_MGMT, &hdev->flags) &&
+-				test_and_clear_bit(HCI_INQUIRY, &hdev->flags))
++	if (test_and_clear_bit(HCI_INQUIRY, &hdev->flags) &&
++				test_bit(HCI_MGMT, &hdev->flags))
+ 		mgmt_discovering(hdev->id, 0);
+ 
+ 	hci_conn_check_pending(hdev);
+@@ -959,9 +1067,8 @@
+ 		return;
+ 	}
+ 
+-	if (test_bit(HCI_MGMT, &hdev->flags) &&
+-					!test_and_set_bit(HCI_INQUIRY,
+-							&hdev->flags))
++	if (!test_and_set_bit(HCI_INQUIRY, &hdev->flags) &&
++				test_bit(HCI_MGMT, &hdev->flags))
+ 		mgmt_discovering(hdev->id, 1);
+ }
+ 
+@@ -1317,24 +1424,31 @@
+ 	} else {
+ 		if (!conn) {
+ 			conn = hci_conn_add(hdev, LE_LINK, &cp->peer_addr);
+-			if (conn)
++			if (conn) {
++				conn->dst_type = cp->peer_addr_type;
+ 				conn->out = 1;
+-			else
++			} else {
+ 				BT_ERR("No memory for new connection");
++			}
+ 		}
+ 	}
+ 
+ 	hci_dev_unlock(hdev);
+ }
+ 
++static void hci_cs_le_start_enc(struct hci_dev *hdev, u8 status)
++{
++	BT_DBG("%s status 0x%x", hdev->name, status);
++}
++
+ static inline void hci_inquiry_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
+ {
+ 	__u8 status = *((__u8 *) skb->data);
+ 
+ 	BT_DBG("%s status %d", hdev->name, status);
+ 
+-	if (test_bit(HCI_MGMT, &hdev->flags) &&
+-				test_and_clear_bit(HCI_INQUIRY, &hdev->flags))
++	if (test_and_clear_bit(HCI_INQUIRY, &hdev->flags) &&
++				test_bit(HCI_MGMT, &hdev->flags))
+ 		mgmt_discovering(hdev->id, 0);
+ 
+ 	hci_req_complete(hdev, HCI_OP_INQUIRY, status);
+@@ -1570,51 +1684,58 @@
+ 	hci_dev_lock(hdev);
+ 
+ 	conn = hci_conn_hash_lookup_handle(hdev, __le16_to_cpu(ev->handle));
+-	if (conn) {
+-		if (!ev->status) {
++	if (!conn)
++		goto unlock;
++
++	if (!ev->status) {
++		if (!(conn->ssp_mode > 0 && hdev->ssp_mode > 0) &&
++				test_bit(HCI_CONN_REAUTH_PEND,	&conn->pend)) {
++			BT_INFO("re-auth of legacy device is not possible.");
++		} else {
+ 			conn->link_mode |= HCI_LM_AUTH;
+ 			conn->sec_level = conn->pending_sec_level;
+-		} else {
+-			mgmt_auth_failed(hdev->id, &conn->dst, ev->status);
+ 		}
++	} else {
++		mgmt_auth_failed(hdev->id, &conn->dst, ev->status);
++	}
+ 
+-		clear_bit(HCI_CONN_AUTH_PEND, &conn->pend);
++	clear_bit(HCI_CONN_AUTH_PEND, &conn->pend);
++	clear_bit(HCI_CONN_REAUTH_PEND, &conn->pend);
+ 
+-		if (conn->state == BT_CONFIG) {
+-			if (!ev->status && hdev->ssp_mode > 0 &&
+-							conn->ssp_mode > 0) {
+-				struct hci_cp_set_conn_encrypt cp;
+-				cp.handle  = ev->handle;
+-				cp.encrypt = 0x01;
+-				hci_send_cmd(hdev, HCI_OP_SET_CONN_ENCRYPT,
+-							sizeof(cp), &cp);
+-			} else {
+-				conn->state = BT_CONNECTED;
+-				hci_proto_connect_cfm(conn, ev->status);
+-				hci_conn_put(conn);
+-			}
++	if (conn->state == BT_CONFIG) {
++		if (!ev->status && hdev->ssp_mode > 0 && conn->ssp_mode > 0) {
++			struct hci_cp_set_conn_encrypt cp;
++			cp.handle  = ev->handle;
++			cp.encrypt = 0x01;
++			hci_send_cmd(hdev, HCI_OP_SET_CONN_ENCRYPT, sizeof(cp),
++									&cp);
+ 		} else {
+-			hci_auth_cfm(conn, ev->status);
+-
+-			hci_conn_hold(conn);
+-			conn->disc_timeout = HCI_DISCONN_TIMEOUT;
++			conn->state = BT_CONNECTED;
++			hci_proto_connect_cfm(conn, ev->status);
+ 			hci_conn_put(conn);
+ 		}
++	} else {
++		hci_auth_cfm(conn, ev->status);
+ 
+-		if (test_bit(HCI_CONN_ENCRYPT_PEND, &conn->pend)) {
+-			if (!ev->status) {
+-				struct hci_cp_set_conn_encrypt cp;
+-				cp.handle  = ev->handle;
+-				cp.encrypt = 0x01;
+-				hci_send_cmd(hdev, HCI_OP_SET_CONN_ENCRYPT,
+-							sizeof(cp), &cp);
+-			} else {
+-				clear_bit(HCI_CONN_ENCRYPT_PEND, &conn->pend);
+-				hci_encrypt_cfm(conn, ev->status, 0x00);
+-			}
++		hci_conn_hold(conn);
++		conn->disc_timeout = HCI_DISCONN_TIMEOUT;
++		hci_conn_put(conn);
++	}
++
++	if (test_bit(HCI_CONN_ENCRYPT_PEND, &conn->pend)) {
++		if (!ev->status) {
++			struct hci_cp_set_conn_encrypt cp;
++			cp.handle  = ev->handle;
++			cp.encrypt = 0x01;
++			hci_send_cmd(hdev, HCI_OP_SET_CONN_ENCRYPT, sizeof(cp),
++									&cp);
++		} else {
++			clear_bit(HCI_CONN_ENCRYPT_PEND, &conn->pend);
++			hci_encrypt_cfm(conn, ev->status, 0x00);
+ 		}
+ 	}
+ 
++unlock:
+ 	hci_dev_unlock(hdev);
+ }
+ 
+@@ -1665,6 +1786,7 @@
+ 				/* Encryption implies authentication */
+ 				conn->link_mode |= HCI_LM_AUTH;
+ 				conn->link_mode |= HCI_LM_ENCRYPT;
++				conn->sec_level = conn->pending_sec_level;
+ 			} else
+ 				conn->link_mode &= ~HCI_LM_ENCRYPT;
+ 		}
+@@ -2804,6 +2952,7 @@
+ 
+ 	mgmt_connected(hdev->id, &ev->bdaddr);
+ 
++	conn->sec_level = BT_SECURITY_LOW;
+ 	conn->handle = __le16_to_cpu(ev->handle);
+ 	conn->state = BT_CONNECTED;
+ 

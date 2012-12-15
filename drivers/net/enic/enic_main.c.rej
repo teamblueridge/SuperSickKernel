@@ -1,0 +1,17 @@
+--- drivers/net/enic/enic_main.c
++++ drivers/net/enic/enic_main.c
+@@ -1757,8 +1796,12 @@
+ 			enic_isr_msix_rq(enic->msix_entry[intr].vector,
+ 				&enic->napi[i]);
+ 		}
+-		intr = enic_msix_wq_intr(enic, i);
+-		enic_isr_msix_wq(enic->msix_entry[intr].vector, enic);
++
++		for (i = 0; i < enic->wq_count; i++) {
++			intr = enic_msix_wq_intr(enic, i);
++			enic_isr_msix_wq(enic->msix_entry[intr].vector, enic);
++		}
++
+ 		break;
+ 	case VNIC_DEV_INTR_MODE_MSI:
+ 		enic_isr_msi(enic->pdev->irq, enic);

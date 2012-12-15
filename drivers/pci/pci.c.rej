@@ -1,0 +1,11 @@
+--- drivers/pci/pci.c
++++ drivers/pci/pci.c
+@@ -1907,7 +1909,7 @@
+ {
+ 	int pos;
+ 	u32 cap;
+-	u16 ctrl;
++	u16 flags, ctrl;
+ 	struct pci_dev *bridge;
+ 
+ 	if (!pci_is_pcie(dev) || dev->devfn)

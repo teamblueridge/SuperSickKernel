@@ -25,6 +25,7 @@
 #ifndef __HCI_CORE_H
 #define __HCI_CORE_H
 
+#include <linux/interrupt.h>
 #include <net/bluetooth/hci.h>
 #include <linux/wakelock.h>
 /* HCI upper protocols */
@@ -126,6 +127,12 @@ struct adv_entry {
 	u8 flags;
 };
 
+struct adv_entry {
+	struct list_head list;
+	bdaddr_t bdaddr;
+	u8 bdaddr_type;
+};
+
 #define NUM_REASSEMBLY 4
 struct hci_dev {
 	struct list_head list;
@@ -144,6 +151,7 @@ struct hci_dev {
 	__u8		major_class;
 	__u8		minor_class;
 	__u8		features[8];
+	__u8		extfeatures[8];
 	__u8		commands[64];
 	__u8		ssp_mode;
 	__u8		hci_ver;
@@ -225,6 +233,8 @@ struct hci_dev {
 
 	struct crypto_blkcipher	*tfm;
 
+	struct crypto_blkcipher	*tfm;
+
 	struct inquiry_cache	inq_cache;
 	struct hci_conn_hash	conn_hash;
 	struct hci_chan_list	chan_list;
@@ -245,6 +255,9 @@ struct hci_dev {
 	__u8			disco_state;
 	int			disco_int_phase;
 	int			disco_int_count;
+
+	struct list_head	adv_entries;
+	struct timer_list	adv_timer;
 
 	struct hci_dev_stats	stat;
 
@@ -333,7 +346,6 @@ struct hci_conn {
 	struct hci_dev	*hdev;
 	void		*l2cap_data;
 	void		*sco_data;
-	void		*priv;
 
 	__u8             link_key[16];
 	__u8             key_type;
@@ -412,12 +424,14 @@ static inline long inquiry_entry_age(struct inquiry_entry *e)
 	return jiffies - e->timestamp;
 }
 
-struct inquiry_entry *hci_inquiry_cache_lookup(struct hci_dev *hdev, bdaddr_t *bdaddr);
+struct inquiry_entry *hci_inquiry_cache_lookup(struct hci_dev *hdev,
+							bdaddr_t *bdaddr);
 void hci_inquiry_cache_update(struct hci_dev *hdev, struct inquiry_data *data);
 
 /* ----- HCI Connections ----- */
 enum {
 	HCI_CONN_AUTH_PEND,
+	HCI_CONN_REAUTH_PEND,
 	HCI_CONN_ENCRYPT_PEND,
 	HCI_CONN_RSWITCH_PEND,
 	HCI_CONN_MODE_CHANGE_PEND,
@@ -699,6 +713,8 @@ int hci_inquiry(void __user *arg);
 
 struct bdaddr_list *hci_blacklist_lookup(struct hci_dev *hdev, bdaddr_t *bdaddr);
 int hci_blacklist_clear(struct hci_dev *hdev);
+int hci_blacklist_add(struct hci_dev *hdev, bdaddr_t *bdaddr);
+int hci_blacklist_del(struct hci_dev *hdev, bdaddr_t *bdaddr);
 
 int hci_uuids_clear(struct hci_dev *hdev);
 
@@ -719,6 +735,12 @@ struct oob_data *hci_find_remote_oob_data(struct hci_dev *hdev,
 int hci_add_remote_oob_data(struct hci_dev *hdev, bdaddr_t *bdaddr, u8 *hash,
 								u8 *randomizer);
 int hci_remove_remote_oob_data(struct hci_dev *hdev, bdaddr_t *bdaddr);
+
+#define ADV_CLEAR_TIMEOUT (3*60*HZ) /* Three minutes */
+int hci_adv_entries_clear(struct hci_dev *hdev);
+struct adv_entry *hci_find_adv_entry(struct hci_dev *hdev, bdaddr_t *bdaddr);
+int hci_add_adv_entry(struct hci_dev *hdev,
+					struct hci_ev_le_advertising_info *ev);
 
 #define ADV_CLEAR_TIMEOUT (3*60*HZ) /* Three minutes */
 int hci_adv_entries_clear(struct hci_dev *hdev);
@@ -751,6 +773,9 @@ void hci_conn_del_sysfs(struct hci_conn *conn);
 #define lmp_ssp_capable(dev)       ((dev)->features[6] & LMP_SIMPLE_PAIR)
 #define lmp_no_flush_capable(dev)  ((dev)->features[6] & LMP_NO_FLUSH)
 #define lmp_le_capable(dev)        ((dev)->features[4] & LMP_LE)
+
+/* ----- Extended LMP capabilities ----- */
+#define lmp_host_le_capable(dev)   ((dev)->extfeatures[0] & LMP_HOST_LE)
 
 /* ----- HCI protocols ----- */
 struct hci_proto {
@@ -860,7 +885,8 @@ static inline void hci_proto_auth_cfm(struct hci_conn *conn, __u8 status)
 		conn->security_cfm_cb(conn, status);
 }
 
-static inline void hci_proto_encrypt_cfm(struct hci_conn *conn, __u8 status, __u8 encrypt)
+static inline void hci_proto_encrypt_cfm(struct hci_conn *conn, __u8 status,
+								__u8 encrypt)
 {
 	register struct hci_proto *hp;
 
@@ -912,7 +938,8 @@ struct hci_cb {
 
 	char *name;
 
-	void (*security_cfm)	(struct hci_conn *conn, __u8 status, __u8 encrypt);
+	void (*security_cfm)	(struct hci_conn *conn, __u8 status,
+								__u8 encrypt);
 	void (*key_change_cfm)	(struct hci_conn *conn, __u8 status);
 	void (*role_switch_cfm)	(struct hci_conn *conn, __u8 status, __u8 role);
 };
@@ -972,7 +999,8 @@ static inline void hci_key_change_cfm(struct hci_conn *conn, __u8 status)
 	read_unlock_bh(&hci_cb_list_lock);
 }
 
-static inline void hci_role_switch_cfm(struct hci_conn *conn, __u8 status, __u8 role)
+static inline void hci_role_switch_cfm(struct hci_conn *conn, __u8 status,
+								__u8 role)
 {
 	struct list_head *p;
 

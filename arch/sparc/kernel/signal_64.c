@@ -34,7 +34,6 @@
 
 #include "entry.h"
 #include "systbls.h"
-#include "sigutil.h"
 
 #define _BLOCKABLE (~(sigmask(SIGKILL) | sigmask(SIGSTOP)))
 
@@ -267,12 +266,33 @@ asmlinkage long sys_sigsuspend(old_sigset_t set)
 	return _sigpause_common(set);
 }
 
+static inline int
+restore_fpu_state(struct pt_regs *regs, __siginfo_fpu_t __user *fpu)
+{
+	unsigned long *fpregs = current_thread_info()->fpregs;
+	unsigned long fprs;
+	int err;
+
+	err = __get_user(fprs, &fpu->si_fprs);
+	fprs_write(0);
+	regs->tstate &= ~TSTATE_PEF;
+	if (fprs & FPRS_DL)
+		err |= copy_from_user(fpregs, &fpu->si_float_regs[0],
+		       	       (sizeof(unsigned int) * 32));
+	if (fprs & FPRS_DU)
+		err |= copy_from_user(fpregs+16, &fpu->si_float_regs[32],
+		       	       (sizeof(unsigned int) * 32));
+	err |= __get_user(current_thread_info()->xfsr[0], &fpu->si_fsr);
+	err |= __get_user(current_thread_info()->gsr[0], &fpu->si_gsr);
+	current_thread_info()->fpsaved[0] |= fprs;
+	return err;
+}
+
 void do_rt_sigreturn(struct pt_regs *regs)
 {
 	struct rt_signal_frame __user *sf;
 	unsigned long tpc, tnpc, tstate;
 	__siginfo_fpu_t __user *fpu_save;
-	__siginfo_rwin_t __user *rwin_save;
 	sigset_t set;
 	int err;
 
@@ -305,18 +325,12 @@ void do_rt_sigreturn(struct pt_regs *regs)
 	regs->tstate |= (tstate & (TSTATE_ASI | TSTATE_ICC | TSTATE_XCC));
 
 	err |= __get_user(fpu_save, &sf->fpu_save);
-	if (!err && fpu_save)
-		err |= restore_fpu_state(regs, fpu_save);
+	if (fpu_save)
+		err |= restore_fpu_state(regs, &sf->fpu_state);
 
 	err |= __copy_from_user(&set, &sf->mask, sizeof(sigset_t));
 	if (err || do_sigaltstack(&sf->stack, NULL, (unsigned long)sf) == -EFAULT)
 		goto segv;
-
-	err |= __get_user(rwin_save, &sf->rwin_save);
-	if (!err && rwin_save) {
-		if (restore_rwin_state(rwin_save))
-			goto segv;
-	}
 
 	regs->tpc = tpc;
 	regs->tnpc = tnpc;
@@ -377,47 +391,33 @@ setup_rt_frame(struct k_sigaction *ka, struct pt_regs *regs,
 	       int signo, sigset_t *oldset, siginfo_t *info)
 {
 	struct rt_signal_frame __user *sf;
-	int wsaved, err, sf_size;
-	void __user *tail;
+	int sigframe_size, err;
 
 	/* 1. Make sure everything is clean */
 	synchronize_user_stack();
 	save_and_clear_fpu();
 	
-	wsaved = get_thread_wsaved();
+	sigframe_size = sizeof(struct rt_signal_frame);
+	if (!(current_thread_info()->fpsaved[0] & FPRS_FEF))
+		sigframe_size -= sizeof(__siginfo_fpu_t);
 
-	sf_size = sizeof(struct rt_signal_frame);
-	if (current_thread_info()->fpsaved[0] & FPRS_FEF)
-		sf_size += sizeof(__siginfo_fpu_t);
-	if (wsaved)
-		sf_size += sizeof(__siginfo_rwin_t);
 	sf = (struct rt_signal_frame __user *)
-		get_sigframe(ka, regs, sf_size);
-
-	if (invalid_frame_pointer (sf))
+		get_sigframe(ka, regs, sigframe_size);
+	
+	if (invalid_frame_pointer (sf, sigframe_size))
 		goto sigill;
 
-	tail = (sf + 1);
+	if (get_thread_wsaved() != 0)
+		goto sigill;
 
 	/* 2. Save the current process state */
 	err = copy_to_user(&sf->regs, regs, sizeof (*regs));
 
 	if (current_thread_info()->fpsaved[0] & FPRS_FEF) {
-		__siginfo_fpu_t __user *fpu_save = tail;
-		tail += sizeof(__siginfo_fpu_t);
-		err |= save_fpu_state(regs, fpu_save);
-		err |= __put_user((u64)fpu_save, &sf->fpu_save);
+		err |= save_fpu_state(regs, &sf->fpu_state);
+		err |= __put_user((u64)&sf->fpu_state, &sf->fpu_save);
 	} else {
 		err |= __put_user(0, &sf->fpu_save);
-	}
-	if (wsaved) {
-		__siginfo_rwin_t __user *rwin_save = tail;
-		tail += sizeof(__siginfo_rwin_t);
-		err |= save_rwin_state(wsaved, rwin_save);
-		err |= __put_user((u64)rwin_save, &sf->rwin_save);
-		set_thread_wsaved(0);
-	} else {
-		err |= __put_user(0, &sf->rwin_save);
 	}
 	
 	/* Setup sigaltstack */
@@ -427,17 +427,10 @@ setup_rt_frame(struct k_sigaction *ka, struct pt_regs *regs,
 
 	err |= copy_to_user(&sf->mask, oldset, sizeof(sigset_t));
 
-	if (!wsaved) {
-		err |= copy_in_user((u64 __user *)sf,
-				    (u64 __user *)(regs->u_regs[UREG_FP] +
-						   STACK_BIAS),
-				    sizeof(struct reg_window));
-	} else {
-		struct reg_window *rp;
+	err |= copy_in_user((u64 __user *)sf,
+			    (u64 __user *)(regs->u_regs[UREG_FP]+STACK_BIAS),
+			    sizeof(struct reg_window));
 
-		rp = &current_thread_info()->reg_window[wsaved - 1];
-		err |= copy_to_user(sf, rp, sizeof(struct reg_window));
-	}
 	if (info)
 		err |= copy_siginfo_to_user(&sf->info, info);
 	else {

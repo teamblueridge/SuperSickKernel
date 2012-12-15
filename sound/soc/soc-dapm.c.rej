@@ -1,0 +1,108 @@
+--- sound/soc/soc-dapm.c
++++ sound/soc/soc-dapm.c
+@@ -256,7 +318,7 @@
+ 		unsigned int mask = (1 << fls(max)) - 1;
+ 		unsigned int invert = mc->invert;
+ 
+-		val = snd_soc_read(w->codec, reg);
++		val = soc_widget_read(w, reg);
+ 		val = (val >> shift) & mask;
+ 
+ 		if ((invert && !val) || (!invert && val))
+@@ -271,8 +333,8 @@
+ 		int val, item, bitmask;
+ 
+ 		for (bitmask = 1; bitmask < e->max; bitmask <<= 1)
+-		;
+-		val = snd_soc_read(w->codec, e->reg);
++			;
++		val = soc_widget_read(w, e->reg);
+ 		item = (val >> e->shift_l) & (bitmask - 1);
+ 
+ 		p->connect = 0;
+@@ -302,7 +364,7 @@
+ 			w->kcontrol_news[i].private_value;
+ 		int val, item;
+ 
+-		val = snd_soc_read(w->codec, e->reg);
++		val = soc_widget_read(w, e->reg);
+ 		val = (val >> e->shift_l) & e->mask;
+ 		for (item = 0; item < e->max; item++) {
+ 			if (val == e->values[item])
+@@ -749,7 +817,7 @@
+ 	else
+ 		val = w->off_val;
+ 
+-	snd_soc_update_bits(w->codec, -(w->reg + 1),
++	soc_widget_update_bits(w, -(w->reg + 1),
+ 			    w->mask << w->shift, val << w->shift);
+ 
+ 	return 0;
+@@ -956,11 +1027,17 @@
+ 	}
+ 
+ 	if (reg >= 0) {
++		/* Any widget will do, they should all be updating the
++		 * same register.
++		 */
++		w = list_first_entry(pending, struct snd_soc_dapm_widget,
++				     power_list);
++
+ 		pop_dbg(dapm->dev, card->pop_time,
+ 			"pop test : Applying 0x%x/0x%x to %x in %dms\n",
+ 			value, mask, reg, card->pop_time);
+ 		pop_wait(card->pop_time);
+-		snd_soc_update_bits(dapm->codec, reg, mask, value);
++		soc_widget_update_bits(w, reg, mask, value);
+ 	}
+ 
+ 	list_for_each_entry(w, pending, power_list) {
+@@ -1261,24 +1368,19 @@
+ 		switch (event) {
+ 		case SND_SOC_DAPM_STREAM_START:
+ 		case SND_SOC_DAPM_STREAM_RESUME:
+-			dapm->dev_power = 1;
++			dapm->target_bias_level = SND_SOC_BIAS_ON;
+ 			break;
+ 		case SND_SOC_DAPM_STREAM_STOP:
+-			dapm->dev_power = !!dapm->codec->active;
++			if (dapm->codec->active)
++				dapm->target_bias_level = SND_SOC_BIAS_ON;
++			else
++				dapm->target_bias_level = SND_SOC_BIAS_STANDBY;
+ 			break;
+ 		case SND_SOC_DAPM_STREAM_SUSPEND:
+-			dapm->dev_power = 0;
++			dapm->target_bias_level = SND_SOC_BIAS_STANDBY;
+ 			break;
+ 		case SND_SOC_DAPM_STREAM_NOP:
+-			switch (dapm->bias_level) {
+-				case SND_SOC_BIAS_STANDBY:
+-				case SND_SOC_BIAS_OFF:
+-					dapm->dev_power = 0;
+-					break;
+-				default:
+-					dapm->dev_power = 1;
+-					break;
+-			}
++			dapm->target_bias_level = dapm->bias_level;
+ 			break;
+ 		default:
+ 			break;
+@@ -2044,7 +2224,7 @@
+ 
+ 		/* Read the initial power state from the device */
+ 		if (w->reg >= 0) {
+-			val = snd_soc_read(w->codec, w->reg);
++			val = soc_widget_read(w, w->reg);
+ 			val &= 1 << w->shift;
+ 			if (w->invert)
+ 				val = !val;
+@@ -2532,6 +2712,7 @@
+ 	dapm->n_widgets++;
+ 	w->dapm = dapm;
+ 	w->codec = dapm->codec;
++	w->platform = dapm->platform;
+ 	INIT_LIST_HEAD(&w->sources);
+ 	INIT_LIST_HEAD(&w->sinks);
+ 	INIT_LIST_HEAD(&w->list);

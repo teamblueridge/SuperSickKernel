@@ -1,0 +1,11 @@
+--- drivers/staging/Kconfig
++++ drivers/staging/Kconfig
+@@ -114,8 +108,6 @@
+ 
+ source "drivers/staging/xgifb/Kconfig"
+ 
+-source "drivers/staging/msm/Kconfig"
+-
+ source "drivers/staging/lirc/Kconfig"
+ 
+ source "drivers/staging/easycap/Kconfig"

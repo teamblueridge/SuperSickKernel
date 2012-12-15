@@ -1,0 +1,8 @@
+--- drivers/char/Makefile
++++ drivers/char/Makefile
+@@ -63,3 +63,5 @@
+ 
+ obj-$(CONFIG_JS_RTC)		+= js-rtc.o
+ js-rtc-y = rtc.o
++
++obj-$(CONFIG_TILE_SROM)		+= tile-srom.o

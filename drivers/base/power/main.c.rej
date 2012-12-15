@@ -1,0 +1,51 @@
+--- drivers/base/power/main.c
++++ drivers/base/power/main.c
+@@ -851,19 +859,25 @@
+ 	int error = 0;
+ 
+ 	dpm_wait_for_children(dev, async);
+-	device_lock(dev);
+ 
+ 	if (async_error)
+-		goto Unlock;
++		return 0;
++
++	pm_runtime_get_noresume(dev);
++	if (pm_runtime_barrier(dev) && device_may_wakeup(dev))
++		pm_wakeup_event(dev, 0);
+ 
+ 	if (pm_wakeup_pending()) {
++		pm_runtime_put_sync(dev);
+ 		async_error = -EBUSY;
+-		goto Unlock;
++		return 0;
+ 	}
+ 
+-	if (dev->pwr_domain) {
++	device_lock(dev);
++
++	if (dev->pm_domain) {
+ 		pm_dev_dbg(dev, state, "power domain ");
+-		error = pm_op(dev, &dev->pwr_domain->ops, state);
++		error = pm_op(dev, &dev->pm_domain->ops, state);
+ 		goto End;
+ 	}
+ 
+@@ -898,12 +912,15 @@
+  End:
+ 	dev->power.is_suspended = !error;
+ 
+- Unlock:
+ 	device_unlock(dev);
+ 	complete_all(&dev->power.completion);
+ 
+-	if (error)
++	if (error) {
++		pm_runtime_put_sync(dev);
+ 		async_error = error;
++	} else if (dev->power.is_suspended) {
++		__pm_runtime_disable(dev, false);
++	}
+ 
+ 	return error;
+ }

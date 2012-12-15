@@ -1,0 +1,28 @@
+--- net/core/fib_rules.c
++++ net/core/fib_rules.c
+@@ -475,11 +475,8 @@
+ 
+ 		list_del_rcu(&rule->list);
+ 
+-		if (rule->action == FR_ACT_GOTO) {
++		if (rule->action == FR_ACT_GOTO)
+ 			ops->nr_goto_rules--;
+-			if (rtnl_dereference(rule->ctarget) == NULL)
+-				ops->unresolved_rules--;
+-		}
+ 
+ 		/*
+ 		 * Check if this rule is a target to any of them. If so,
+@@ -743,9 +740,9 @@
+ static int __init fib_rules_init(void)
+ {
+ 	int err;
+-	rtnl_register(PF_UNSPEC, RTM_NEWRULE, fib_nl_newrule, NULL, NULL);
+-	rtnl_register(PF_UNSPEC, RTM_DELRULE, fib_nl_delrule, NULL, NULL);
+-	rtnl_register(PF_UNSPEC, RTM_GETRULE, NULL, fib_nl_dumprule, NULL);
++	rtnl_register(PF_UNSPEC, RTM_NEWRULE, fib_nl_newrule, NULL);
++	rtnl_register(PF_UNSPEC, RTM_DELRULE, fib_nl_delrule, NULL);
++	rtnl_register(PF_UNSPEC, RTM_GETRULE, NULL, fib_nl_dumprule);
+ 
+ 	err = register_pernet_subsys(&fib_rules_net_ops);
+ 	if (err < 0)

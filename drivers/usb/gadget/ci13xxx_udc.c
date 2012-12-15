@@ -1240,6 +1240,7 @@ static ssize_t show_qheads(struct device *dev, struct device_attribute *attr,
 		dev_err(dev, "[%s] EINVAL\n", __func__);
 		return 0;
 	}
+	kfree(dump);
 
 	spin_lock_irqsave(udc->lock, flags);
 	for (i = 0; i < hw_ep_max/2; i++) {
@@ -2829,6 +2830,9 @@ static int ci13xxx_request_reset(struct usb_gadget *_gadget)
 	return 0;
 }
 
+static int ci13xxx_start(struct usb_gadget_driver *driver,
+		int (*bind)(struct usb_gadget *));
+static int ci13xxx_stop(struct usb_gadget_driver *driver);
 /**
  * Device operations part of the API to the USB controller hardware,
  * which don't involve endpoints (or i/o)
@@ -2932,10 +2936,13 @@ int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
 	if (retval)
 		goto done;
 	spin_unlock_irqrestore(udc->lock, flags);
-	retval = usb_ep_enable(&udc->ep0out.ep, &ctrl_endpt_out_desc);
+	udc->ep0out.ep.desc = &ctrl_endpt_out_desc;
+	retval = usb_ep_enable(&udc->ep0out.ep);
 	if (retval)
 		return retval;
-	retval = usb_ep_enable(&udc->ep0in.ep, &ctrl_endpt_in_desc);
+
+	udc->ep0in.ep.desc = &ctrl_endpt_in_desc;
+	retval = usb_ep_enable(&udc->ep0in.ep);
 	if (retval)
 		return retval;
 	spin_lock_irqsave(udc->lock, flags);
@@ -2980,14 +2987,13 @@ int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
 		pm_runtime_put_sync(&udc->gadget.dev);
 	return retval;
 }
-EXPORT_SYMBOL(usb_gadget_probe_driver);
 
 /**
- * usb_gadget_unregister_driver: unregister a gadget driver
+ * ci13xxx_stop: unregister a gadget driver
  *
  * Check usb_gadget_unregister_driver() at "usb_gadget.h" for details
  */
-int usb_gadget_unregister_driver(struct usb_gadget_driver *driver)
+static int ci13xxx_stop(struct usb_gadget_driver *driver)
 {
 	struct ci13xxx *udc = _udc;
 	unsigned long i, flags;
@@ -3046,7 +3052,6 @@ int usb_gadget_unregister_driver(struct usb_gadget_driver *driver)
 
 	return 0;
 }
-EXPORT_SYMBOL(usb_gadget_unregister_driver);
 
 /******************************************************************************
  * BUS block
@@ -3231,11 +3236,22 @@ static int udc_probe(struct ci13xxx_udc_driver *driver, struct device *dev,
 		if (retval)
 			goto remove_dbg;
 	}
+
+	retval = usb_add_gadget_udc(dev, &udc->gadget);
+	if (retval)
+		goto remove_trans;
+
 	pm_runtime_no_callbacks(&udc->gadget.dev);
 	pm_runtime_enable(&udc->gadget.dev);
 
 	_udc = udc;
 	return retval;
+
+remove_trans:
+	if (udc->transceiver) {
+		otg_set_peripheral(udc->transceiver, &udc->gadget);
+		otg_put_transceiver(udc->transceiver);
+	}
 
 	err("error = %i", retval);
 remove_dbg:
@@ -3266,6 +3282,7 @@ static void udc_remove(void)
 		err("EINVAL");
 		return;
 	}
+	usb_del_gadget_udc(&udc->gadget);
 
 	if (udc->transceiver) {
 		otg_set_peripheral(udc->transceiver, &udc->gadget);

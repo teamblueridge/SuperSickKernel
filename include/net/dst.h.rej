@@ -1,0 +1,48 @@
+--- include/net/dst.h
++++ include/net/dst.h
+@@ -37,8 +37,7 @@
+ 	unsigned long		_metrics;
+ 	unsigned long		expires;
+ 	struct dst_entry	*path;
+-	struct neighbour	*neighbour;
+-	struct hh_cache		*hh;
++	struct neighbour __rcu	*_neighbour;
+ #ifdef CONFIG_XFRM
+ 	struct xfrm_state	*xfrm;
+ #else
+@@ -79,13 +86,6 @@
+ 	atomic_t		__refcnt;	/* client references	*/
+ 	int			__use;
+ 	unsigned long		lastuse;
+-	int			flags;
+-#define DST_HOST		0x0001
+-#define DST_NOXFRM		0x0002
+-#define DST_NOPOLICY		0x0004
+-#define DST_NOHASH		0x0008
+-#define DST_NOCACHE		0x0010
+-#define DST_NOCOUNT		0x0020
+ 	union {
+ 		struct dst_entry	*next;
+ 		struct rtable __rcu	*rt_next;
+@@ -394,8 +409,19 @@
+ 
+ static inline void dst_confirm(struct dst_entry *dst)
+ {
+-	if (dst)
+-		neigh_confirm(dst->neighbour);
++	if (dst) {
++		struct neighbour *n;
++
++		rcu_read_lock();
++		n = dst_get_neighbour(dst);
++		neigh_confirm(n);
++		rcu_read_unlock();
++	}
++}
++
++static inline struct neighbour *dst_neigh_lookup(const struct dst_entry *dst, const void *daddr)
++{
++	return dst->ops->neigh_lookup(dst, daddr);
+ }
+ 
+ static inline void dst_link_failure(struct sk_buff *skb)

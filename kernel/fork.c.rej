@@ -1,0 +1,11 @@
+--- kernel/fork.c
++++ kernel/fork.c
+@@ -1014,7 +1015,7 @@
+ {
+ 	raw_spin_lock_init(&p->pi_lock);
+ #ifdef CONFIG_RT_MUTEXES
+-	plist_head_init_raw(&p->pi_waiters, &p->pi_lock);
++	plist_head_init(&p->pi_waiters);
+ 	p->pi_blocked_on = NULL;
+ #endif
+ }

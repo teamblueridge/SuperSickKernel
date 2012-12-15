@@ -47,6 +47,14 @@ struct dst_entry {
 	int			(*input)(struct sk_buff*);
 	int			(*output)(struct sk_buff*);
 
+	int			flags;
+#define DST_HOST		0x0001
+#define DST_NOXFRM		0x0002
+#define DST_NOPOLICY		0x0004
+#define DST_NOHASH		0x0008
+#define DST_NOCACHE		0x0010
+#define DST_NOCOUNT		0x0020
+
 	short			error;
 	short			obsolete;
 	unsigned short		header_len;	/* more space at head required */
@@ -62,7 +70,7 @@ struct dst_entry {
 	 * (L1_CACHE_SIZE would be too much)
 	 */
 #ifdef CONFIG_64BIT
-	long			__pad_to_align_refcnt[1];
+	long			__pad_to_align_refcnt[2];
 #endif
 	/*
 	 * __refcnt wants to be on a different cache line from
@@ -86,6 +94,21 @@ struct dst_entry {
 		struct dn_route __rcu	*dn_next;
 	};
 };
+
+static inline struct neighbour *dst_get_neighbour(struct dst_entry *dst)
+{
+	return rcu_dereference(dst->_neighbour);
+}
+
+static inline struct neighbour *dst_get_neighbour_raw(struct dst_entry *dst)
+{
+	return rcu_dereference_raw(dst->_neighbour);
+}
+
+static inline void dst_set_neighbour(struct dst_entry *dst, struct neighbour *neigh)
+{
+	rcu_assign_pointer(dst->_neighbour, neigh);
+}
 
 static inline struct neighbour *dst_get_neighbour(struct dst_entry *dst)
 {

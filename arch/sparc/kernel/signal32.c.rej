@@ -1,0 +1,85 @@
+--- arch/sparc/kernel/signal32.c
++++ arch/sparc/kernel/signal32.c
+@@ -287,7 +301,10 @@
+ 		case 1: set.sig[0] = seta[0] + (((long)seta[1]) << 32);
+ 	}
+ 	sigdelsetmask(&set, ~_BLOCKABLE);
+-	set_current_blocked(&set);
++	spin_lock_irq(&current->sighand->siglock);
++	current->blocked = set;
++	recalc_sigpending();
++	spin_unlock_irq(&current->sighand->siglock);
+ 	return;
+ 
+ segv:
+@@ -380,7 +389,10 @@
+ 		case 1: set.sig[0] = seta.sig[0] + (((long)seta.sig[1]) << 32);
+ 	}
+ 	sigdelsetmask(&set, ~_BLOCKABLE);
+-	set_current_blocked(&set);
++	spin_lock_irq(&current->sighand->siglock);
++	current->blocked = set;
++	recalc_sigpending();
++	spin_unlock_irq(&current->sighand->siglock);
+ 	return;
+ segv:
+ 	force_sig(SIGSEGV, current);
+@@ -574,21 +591,10 @@
+ 	err |= __copy_to_user(sf->extramask, seta + 1,
+ 			      (_COMPAT_NSIG_WORDS - 1) * sizeof(unsigned int));
+ 
+-	if (!wsaved) {
+-		err |= copy_in_user((u32 __user *)sf,
+-				    (u32 __user *)(regs->u_regs[UREG_FP]),
+-				    sizeof(struct reg_window32));
+-	} else {
+-		struct reg_window *rp;
+-
+-		rp = &current_thread_info()->reg_window[wsaved - 1];
+-		for (i = 0; i < 8; i++)
+-			err |= __put_user(rp->locals[i], &sf->ss.locals[i]);
+-		for (i = 0; i < 6; i++)
+-			err |= __put_user(rp->ins[i], &sf->ss.ins[i]);
+-		err |= __put_user(rp->ins[6], &sf->ss.fp);
+-		err |= __put_user(rp->ins[7], &sf->ss.callers_pc);
+-	}	
++	err |= copy_in_user((u32 __user *)sf,
++			    (u32 __user *)(regs->u_regs[UREG_FP]),
++			    sizeof(struct reg_window32));
++	
+ 	if (err)
+ 		goto sigsegv;
+ 
+@@ -761,7 +741,6 @@
+ 				  siginfo_t *info,
+ 				  sigset_t *oldset, struct pt_regs *regs)
+ {
+-	sigset_t blocked;
+ 	int err;
+ 
+ 	if (ka->sa.sa_flags & SA_SIGINFO)
+@@ -772,10 +751,12 @@
+ 	if (err)
+ 		return err;
+ 
+-	sigorsets(&blocked, &current->blocked, &ka->sa.sa_mask);
++	spin_lock_irq(&current->sighand->siglock);
++	sigorsets(&current->blocked,&current->blocked,&ka->sa.sa_mask);
+ 	if (!(ka->sa.sa_flags & SA_NOMASK))
+-		sigaddset(&blocked, signr);
+-	set_current_blocked(&blocked);
++		sigaddset(&current->blocked,signr);
++	recalc_sigpending();
++	spin_unlock_irq(&current->sighand->siglock);
+ 
+ 	tracehook_signal_handler(signr, info, ka, regs, 0);
+ 
+@@ -859,7 +840,7 @@
+ 	 */
+ 	if (current_thread_info()->status & TS_RESTORE_SIGMASK) {
+ 		current_thread_info()->status &= ~TS_RESTORE_SIGMASK;
+-		set_current_blocked(&current->saved_sigmask);
++		sigprocmask(SIG_SETMASK, &current->saved_sigmask, NULL);
+ 	}
+ }
+ 

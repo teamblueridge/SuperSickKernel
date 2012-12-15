@@ -712,6 +712,13 @@ void mmc_set_clock(struct mmc_host *host, unsigned int hz)
 	mmc_host_clk_release(host);
 }
 
+void mmc_set_clock(struct mmc_host *host, unsigned int hz)
+{
+	mmc_host_clk_hold(host);
+	__mmc_set_clock(host, hz);
+	mmc_host_clk_release(host);
+}
+
 #ifdef CONFIG_MMC_CLKGATE
 /*
  * This gates the clock by setting it to 0 Hz.
@@ -1072,6 +1079,8 @@ void mmc_power_up(struct mmc_host *host)
 
 	mmc_host_clk_hold(host);
 
+	mmc_host_clk_hold(host);
+
 	/* If ocr is set, we use it */
 	if (host->ocr)
 		bit = ffs(host->ocr) - 1;
@@ -1111,7 +1120,7 @@ void mmc_power_up(struct mmc_host *host)
 	mmc_host_clk_release(host);
 }
 
-void mmc_power_off(struct mmc_host *host)
+static void mmc_power_off(struct mmc_host *host)
 {
 	mmc_host_clk_hold(host);
 
@@ -1245,7 +1254,8 @@ void mmc_attach_bus(struct mmc_host *host, const struct mmc_bus_ops *ops)
 }
 
 /*
- * Remove the current bus handler from a host.
+ * Remove the current bus handler from a host. Assumes that there are
+ * no interesting cards left, so the bus is powered down.
  */
 void mmc_detach_bus(struct mmc_host *host)
 {
@@ -1261,6 +1271,8 @@ void mmc_detach_bus(struct mmc_host *host)
 	host->bus_dead = 1;
 
 	spin_unlock_irqrestore(&host->lock, flags);
+
+	mmc_power_off(host);
 
 	mmc_bus_put(host);
 }
@@ -1577,7 +1589,7 @@ static int mmc_do_erase(struct mmc_card *card, unsigned int from,
 			goto out;
 		}
 	} while (!(cmd.resp[0] & R1_READY_FOR_DATA) ||
-		 R1_CURRENT_STATE(cmd.resp[0]) == 7);
+		 R1_CURRENT_STATE(cmd.resp[0]) == R1_STATE_PRG);
 out:
 	return err;
 }
@@ -1686,6 +1698,82 @@ int mmc_erase_group_aligned(struct mmc_card *card, unsigned int from,
 	return 1;
 }
 EXPORT_SYMBOL(mmc_erase_group_aligned);
+
+static unsigned int mmc_do_calc_max_discard(struct mmc_card *card,
+					    unsigned int arg)
+{
+	struct mmc_host *host = card->host;
+	unsigned int max_discard, x, y, qty = 0, max_qty, timeout;
+	unsigned int last_timeout = 0;
+
+	if (card->erase_shift)
+		max_qty = UINT_MAX >> card->erase_shift;
+	else if (mmc_card_sd(card))
+		max_qty = UINT_MAX;
+	else
+		max_qty = UINT_MAX / card->erase_size;
+
+	/* Find the largest qty with an OK timeout */
+	do {
+		y = 0;
+		for (x = 1; x && x <= max_qty && max_qty - x >= qty; x <<= 1) {
+			timeout = mmc_erase_timeout(card, arg, qty + x);
+			if (timeout > host->max_discard_to)
+				break;
+			if (timeout < last_timeout)
+				break;
+			last_timeout = timeout;
+			y = x;
+		}
+		qty += y;
+	} while (y);
+
+	if (!qty)
+		return 0;
+
+	if (qty == 1)
+		return 1;
+
+	/* Convert qty to sectors */
+	if (card->erase_shift)
+		max_discard = --qty << card->erase_shift;
+	else if (mmc_card_sd(card))
+		max_discard = qty;
+	else
+		max_discard = --qty * card->erase_size;
+
+	return max_discard;
+}
+
+unsigned int mmc_calc_max_discard(struct mmc_card *card)
+{
+	struct mmc_host *host = card->host;
+	unsigned int max_discard, max_trim;
+
+	if (!host->max_discard_to)
+		return UINT_MAX;
+
+	/*
+	 * Without erase_group_def set, MMC erase timeout depends on clock
+	 * frequence which can change.  In that case, the best choice is
+	 * just the preferred erase size.
+	 */
+	if (mmc_card_mmc(card) && !(card->ext_csd.erase_group_def & 1))
+		return card->pref_erase;
+
+	max_discard = mmc_do_calc_max_discard(card, MMC_ERASE_ARG);
+	if (mmc_can_trim(card)) {
+		max_trim = mmc_do_calc_max_discard(card, MMC_TRIM_ARG);
+		if (max_trim < max_discard)
+			max_discard = max_trim;
+	} else if (max_discard < card->erase_size) {
+		max_discard = 0;
+	}
+	pr_debug("%s: calculated max. discard sectors %u for timeout %u ms\n",
+		 mmc_hostname(host), max_discard, host->max_discard_to);
+	return max_discard;
+}
+EXPORT_SYMBOL(mmc_calc_max_discard);
 
 int mmc_set_blocklen(struct mmc_card *card, unsigned int blocklen)
 {
@@ -1874,7 +1962,6 @@ void mmc_stop_host(struct mmc_host *host)
 
 		mmc_claim_host(host);
 		mmc_detach_bus(host);
-		mmc_power_off(host);
 		mmc_release_host(host);
 		mmc_bus_put(host);
 		return;
@@ -1889,6 +1976,10 @@ void mmc_stop_host(struct mmc_host *host)
 int mmc_power_save_host(struct mmc_host *host)
 {
 	int ret = 0;
+
+#ifdef CONFIG_MMC_DEBUG
+	pr_info("%s: %s: powering down\n", mmc_hostname(host), __func__);
+#endif
 
 	mmc_bus_get(host);
 
@@ -1911,6 +2002,10 @@ EXPORT_SYMBOL(mmc_power_save_host);
 int mmc_power_restore_host(struct mmc_host *host)
 {
 	int ret;
+
+#ifdef CONFIG_MMC_DEBUG
+	pr_info("%s: %s: powering up\n", mmc_hostname(host), __func__);
+#endif
 
 	mmc_bus_get(host);
 
@@ -2127,7 +2222,6 @@ int mmc_pm_notify(struct notifier_block *notify_block,
 			host->bus_ops->remove(host);
 
 		mmc_detach_bus(host);
-		mmc_power_off(host);
 		mmc_release_host(host);
 		host->pm_flags = 0;
 		break;

@@ -1,0 +1,290 @@
+--- scripts/checkpatch.pl
++++ scripts/checkpatch.pl
+@@ -1528,27 +1695,61 @@
+ 		if ($line =~ /^new (file )?mode.*[7531]\d{0,2}$/) {
+ 			my $permhere = $here . "FILE: $realfile\n";
+ 			if ($realfile =~ /(Makefile|Kconfig|\.c|\.h|\.S|\.tmpl)$/) {
+-				ERROR("do not set execute permissions for source files\n" . $permhere);
++				ERROR("EXECUTE_PERMISSIONS",
++				      "do not set execute permissions for source files\n" . $permhere);
+ 			}
+ 		}
+ 
+-#check the patch for a signoff:
++# Check the patch for a signoff:
+ 		if ($line =~ /^\s*signed-off-by:/i) {
+-			# This is a signoff, if ugly, so do not double report.
+ 			$signoff++;
+-			if (!($line =~ /^\s*Signed-off-by:/)) {
+-				WARN("Signed-off-by: is the preferred form\n" .
+-					$herecurr);
++		}
++
++# Check signature styles
++		if ($line =~ /^(\s*)($signature_tags)(\s*)(.*)/) {
++			my $space_before = $1;
++			my $sign_off = $2;
++			my $space_after = $3;
++			my $email = $4;
++			my $ucfirst_sign_off = ucfirst(lc($sign_off));
++
++			if (defined $space_before && $space_before ne "") {
++				WARN("BAD_SIGN_OFF",
++				     "Do not use whitespace before $ucfirst_sign_off\n" . $herecurr);
+ 			}
+-			if ($line =~ /^\s*signed-off-by:\S/i) {
+-				WARN("space required after Signed-off-by:\n" .
+-					$herecurr);
++			if ($sign_off =~ /-by:$/i && $sign_off ne $ucfirst_sign_off) {
++				WARN("BAD_SIGN_OFF",
++				     "'$ucfirst_sign_off' is the preferred signature form\n" . $herecurr);
++			}
++			if (!defined $space_after || $space_after ne " ") {
++				WARN("BAD_SIGN_OFF",
++				     "Use a single space after $ucfirst_sign_off\n" . $herecurr);
++			}
++
++			my ($email_name, $email_address, $comment) = parse_email($email);
++			my $suggested_email = format_email(($email_name, $email_address));
++			if ($suggested_email eq "") {
++				ERROR("BAD_SIGN_OFF",
++				      "Unrecognized email address: '$email'\n" . $herecurr);
++			} else {
++				my $dequoted = $suggested_email;
++				$dequoted =~ s/^"//;
++				$dequoted =~ s/" </ </;
++				# Don't force email to have quotes
++				# Allow just an angle bracketed address
++				if ("$dequoted$comment" ne $email &&
++				    "<$email_address>$comment" ne $email &&
++				    "$suggested_email$comment" ne $email) {
++					WARN("BAD_SIGN_OFF",
++					     "email address '$email' might be better as '$suggested_email$comment'\n" . $herecurr);
++				}
+ 			}
+ 		}
+ 
+ # Check for wrappage within a valid hunk of the file
+ 		if ($realcnt != 0 && $line !~ m{^(?:\+|-| |\\ No newline|$)}) {
+-			ERROR("patch seems to be corrupt (line wrapped?)\n" .
++			ERROR("CORRUPTED_PATCH",
++			      "patch seems to be corrupt (line wrapped?)\n" .
+ 				$herecurr) if (!$emitted_corrupt++);
+ 		}
+ 
+@@ -1622,7 +1826,8 @@
+ 				}
+ 				$length++;
+ 			}
+-			WARN("please write a paragraph that describes the config symbol fully\n" . $herecurr) if ($is_end && $length < 4);
++			WARN("CONFIG_DESCRIPTION",
++			     "please write a paragraph that describes the config symbol fully\n" . $herecurr) if ($is_end && $length < 4);
+ 			#print "is_end<$is_end> length<$length>\n";
+ 		}
+ 
+@@ -2047,35 +2274,41 @@
+ 		}
+ 		if (defined $suppress_export{$linenr} &&
+ 		    $suppress_export{$linenr} == 2) {
+-			WARN("EXPORT_SYMBOL(foo); should immediately follow its function/variable\n" . $herecurr);
++			WARN("EXPORT_SYMBOL",
++			     "EXPORT_SYMBOL(foo); should immediately follow its function/variable\n" . $herecurr);
+ 		}
+ 
+ # check for global initialisers.
+ 		if ($line =~ /^.$Type\s*$Ident\s*(?:\s+$Modifier)*\s*=\s*(0|NULL|false)\s*;/) {
+-			ERROR("do not initialise globals to 0 or NULL\n" .
++			ERROR("GLOBAL_INITIALISERS",
++			      "do not initialise globals to 0 or NULL\n" .
+ 				$herecurr);
+ 		}
+ # check for static initialisers.
+ 		if ($line =~ /\bstatic\s.*=\s*(0|NULL|false)\s*;/) {
+-			ERROR("do not initialise statics to 0 or NULL\n" .
++			ERROR("INITIALISED_STATIC",
++			      "do not initialise statics to 0 or NULL\n" .
+ 				$herecurr);
+ 		}
+ 
+ # check for static const char * arrays.
+ 		if ($line =~ /\bstatic\s+const\s+char\s*\*\s*(\w+)\s*\[\s*\]\s*=\s*/) {
+-			WARN("static const char * array should probably be static const char * const\n" .
++			WARN("STATIC_CONST_CHAR_ARRAY",
++			     "static const char * array should probably be static const char * const\n" .
+ 				$herecurr);
+                }
+ 
+ # check for static char foo[] = "bar" declarations.
+ 		if ($line =~ /\bstatic\s+char\s+(\w+)\s*\[\s*\]\s*=\s*"/) {
+-			WARN("static char array declaration should probably be static const char\n" .
++			WARN("STATIC_CONST_CHAR_ARRAY",
++			     "static char array declaration should probably be static const char\n" .
+ 				$herecurr);
+                }
+ 
+ # check for declarations of struct pci_device_id
+ 		if ($line =~ /\bstruct\s+pci_device_id\s+\w+\s*\[\s*\]\s*\=\s*\{/) {
+-			WARN("Use DEFINE_PCI_DEVICE_TABLE for struct pci_device_id\n" . $herecurr);
++			WARN("DEFINE_PCI_DEVICE_TABLE",
++			     "Use DEFINE_PCI_DEVICE_TABLE for struct pci_device_id\n" . $herecurr);
+ 		}
+ 
+ # check for new typedefs, only function parameters and sparse annotations
+@@ -2434,45 +2690,53 @@
+ ## 			while ($ln =~ s/\([^\(\)]*\)//g) {
+ ## 			}
+ ## 			if ($ln =~ /,/) {
+-## 				WARN("declaring multiple variables together should be avoided\n" . $herecurr);
++## 				WARN("MULTIPLE_DECLARATION",
++##				     "declaring multiple variables together should be avoided\n" . $herecurr);
+ ## 			}
+ ## 		}
+ 
+ #need space before brace following if, while, etc
+ 		if (($line =~ /\(.*\){/ && $line !~ /\($Type\){/) ||
+ 		    $line =~ /do{/) {
+-			ERROR("space required before the open brace '{'\n" . $herecurr);
++			ERROR("SPACING",
++			      "space required before the open brace '{'\n" . $herecurr);
+ 		}
+ 
+ # closing brace should have a space following it when it has anything
+ # on the line
+ 		if ($line =~ /}(?!(?:,|;|\)))\S/) {
+-			ERROR("space required after that close brace '}'\n" . $herecurr);
++			ERROR("SPACING",
++			      "space required after that close brace '}'\n" . $herecurr);
+ 		}
+ 
+ # check spacing on square brackets
+ 		if ($line =~ /\[\s/ && $line !~ /\[\s*$/) {
+-			ERROR("space prohibited after that open square bracket '['\n" . $herecurr);
++			ERROR("SPACING",
++			      "space prohibited after that open square bracket '['\n" . $herecurr);
+ 		}
+ 		if ($line =~ /\s\]/) {
+-			ERROR("space prohibited before that close square bracket ']'\n" . $herecurr);
++			ERROR("SPACING",
++			      "space prohibited before that close square bracket ']'\n" . $herecurr);
+ 		}
+ 
+ # check spacing on parentheses
+ 		if ($line =~ /\(\s/ && $line !~ /\(\s*(?:\\)?$/ &&
+ 		    $line !~ /for\s*\(\s+;/) {
+-			ERROR("space prohibited after that open parenthesis '('\n" . $herecurr);
++			ERROR("SPACING",
++			      "space prohibited after that open parenthesis '('\n" . $herecurr);
+ 		}
+ 		if ($line =~ /(\s+)\)/ && $line !~ /^.\s*\)/ &&
+ 		    $line !~ /for\s*\(.*;\s+\)/ &&
+ 		    $line !~ /:\s+\)/) {
+-			ERROR("space prohibited before that close parenthesis ')'\n" . $herecurr);
++			ERROR("SPACING",
++			      "space prohibited before that close parenthesis ')'\n" . $herecurr);
+ 		}
+ 
+ #goto labels aren't indented, allow a single space however
+ 		if ($line=~/^.\s+[A-Za-z\d_]+:(?![0-9]+)/ and
+ 		   !($line=~/^. [A-Za-z\d_]+:/) and !($line=~/^.\s+default:/)) {
+-			WARN("labels should not be indented\n" . $herecurr);
++			WARN("INDENTED_LABEL",
++			     "labels should not be indented\n" . $herecurr);
+ 		}
+ 
+ # Return is not a function.
+@@ -2890,33 +3194,38 @@
+ 					$herectx .= raw_line($linenr, $n) . "\n";;
+ 				}
+ 
+-				WARN("braces {} are not necessary for single statement blocks\n" . $herectx);
++				WARN("BRACES",
++				     "braces {} are not necessary for single statement blocks\n" . $herectx);
+ 			}
+ 		}
+ 
+ # don't include deprecated include files (uses RAW line)
+ 		for my $inc (@dep_includes) {
+ 			if ($rawline =~ m@^.\s*\#\s*include\s*\<$inc>@) {
+-				ERROR("Don't use <$inc>: see Documentation/feature-removal-schedule.txt\n" . $herecurr);
++				ERROR("DEPRECATED_INCLUDE",
++				      "Don't use <$inc>: see Documentation/feature-removal-schedule.txt\n" . $herecurr);
+ 			}
+ 		}
+ 
+ # don't use deprecated functions
+ 		for my $func (@dep_functions) {
+ 			if ($line =~ /\b$func\b/) {
+-				ERROR("Don't use $func(): see Documentation/feature-removal-schedule.txt\n" . $herecurr);
++				ERROR("DEPRECATED_FUNCTION",
++				      "Don't use $func(): see Documentation/feature-removal-schedule.txt\n" . $herecurr);
+ 			}
+ 		}
+ 
+ # no volatiles please
+ 		my $asm_volatile = qr{\b(__asm__|asm)\s+(__volatile__|volatile)\b};
+ 		if ($line =~ /\bvolatile\b/ && $line !~ /$asm_volatile/) {
+-			WARN("Use of volatile is usually wrong: see Documentation/volatile-considered-harmful.txt\n" . $herecurr);
++			WARN("VOLATILE",
++			     "Use of volatile is usually wrong: see Documentation/volatile-considered-harmful.txt\n" . $herecurr);
+ 		}
+ 
+ # warn about #if 0
+ 		if ($line =~ /^.\s*\#\s*if\s+0\b/) {
+-			CHK("if this code is redundant consider removing it\n" .
++			CHK("REDUNDANT_CODE",
++			    "if this code is redundant consider removing it\n" .
+ 				$herecurr);
+ 		}
+ 
+@@ -3068,37 +3400,44 @@
+ 			my $name = $1;
+ 
+ 			if (!grep(/$name/, @setup_docs)) {
+-				CHK("__setup appears un-documented -- check Documentation/kernel-parameters.txt\n" . $herecurr);
++				CHK("UNDOCUMENTED_SETUP",
++				    "__setup appears un-documented -- check Documentation/kernel-parameters.txt\n" . $herecurr);
+ 			}
+ 		}
+ 
+ # check for pointless casting of kmalloc return
+ 		if ($line =~ /\*\s*\)\s*[kv][czm]alloc(_node){0,1}\b/) {
+-			WARN("unnecessary cast may hide bugs, see http://c-faq.com/malloc/mallocnocast.html\n" . $herecurr);
++			WARN("UNNECESSARY_CASTS",
++			     "unnecessary cast may hide bugs, see http://c-faq.com/malloc/mallocnocast.html\n" . $herecurr);
+ 		}
+ 
+ # check for multiple semicolons
+ 		if ($line =~ /;\s*;\s*$/) {
+-		    WARN("Statements terminations use 1 semicolon\n" . $herecurr);
++		    WARN("ONE_SEMICOLON",
++			 "Statements terminations use 1 semicolon\n" . $herecurr);
+ 		}
+ 
+ # check for gcc specific __FUNCTION__
+ 		if ($line =~ /__FUNCTION__/) {
+-			WARN("__func__ should be used instead of gcc specific __FUNCTION__\n"  . $herecurr);
++			WARN("USE_FUNC",
++			     "__func__ should be used instead of gcc specific __FUNCTION__\n"  . $herecurr);
+ 		}
+ 
+ # check for semaphores initialized locked
+ 		if ($line =~ /^.\s*sema_init.+,\W?0\W?\)/) {
+-			WARN("consider using a completion\n" . $herecurr);
++			WARN("CONSIDER_COMPLETION",
++			     "consider using a completion\n" . $herecurr);
+ 
+ 		}
+ # recommend kstrto* over simple_strto*
+ 		if ($line =~ /\bsimple_(strto.*?)\s*\(/) {
+-			WARN("consider using kstrto* in preference to simple_$1\n" . $herecurr);
++			WARN("CONSIDER_KSTRTO",
++			     "consider using kstrto* in preference to simple_$1\n" . $herecurr);
+ 		}
+ # check for __initcall(), use device_initcall() explicitly please
+ 		if ($line =~ /^.\s*__initcall\s*\(/) {
+-			WARN("please use device_initcall() instead of __initcall()\n" . $herecurr);
++			WARN("USE_DEVICE_INITCALL",
++			     "please use device_initcall() instead of __initcall()\n" . $herecurr);
+ 		}
+ # check for various ops structs, ensure they are const.
+ 		my $struct_ops = qr{acpi_dock_ops|

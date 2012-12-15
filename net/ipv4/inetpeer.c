@@ -19,7 +19,6 @@
 #include <linux/net.h>
 #include <net/ip.h>
 #include <net/inetpeer.h>
-#include <net/secure_seq.h>
 
 /*
  *  Theory of operations.
@@ -178,6 +177,20 @@ static int addr_compare(const struct inetpeer_addr *a,
 
 #define rcu_deref_locked(X, BASE)				\
 	rcu_dereference_protected(X, lockdep_is_held(&(BASE)->lock.lock))
+
+static bool atomic_add_unless_return(atomic_t *ptr, int a, int u, int *newv)
+{
+	int cur, old = atomic_read(ptr);
+
+	while (old != u) {
+		*newv = old + a;
+		cur = atomic_cmpxchg(ptr, old, *newv);
+		if (cur == old)
+			return true;
+		old = cur;
+	}
+	return false;
+}
 
 /*
  * Called with local BH disabled and the pool lock held.
