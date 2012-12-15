@@ -1,0 +1,10 @@
+--- arch/arm/mach-ux500/Kconfig
++++ arch/arm/mach-ux500/Kconfig
+@@ -6,6 +6,7 @@
+ 	select ARM_GIC
+ 	select HAS_MTU
+ 	select ARM_ERRATA_753970
++	select ARM_ERRATA_754322
+ 
+ menu "Ux500 SoC"
+ 

@@ -1,0 +1,18 @@
+--- include/linux/mmc/host.h
++++ include/linux/mmc/host.h
+@@ -300,6 +319,8 @@
+ 
+ 	struct dentry		*debugfs_root;
+ 
++	struct mmc_async_req	*areq;		/* active async req */
++
+ 	unsigned long		private[0] ____cacheline_aligned;
+ };
+ 
+@@ -392,5 +413,4 @@
+ {
+ 	return host->caps & MMC_CAP_CMD23;
+ }
+-#endif
+-
++#endif /* LINUX_MMC_HOST_H */

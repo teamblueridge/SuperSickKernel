@@ -175,6 +175,12 @@ struct l2cap_conninfo {
 #define L2CAP_SDULEN_SIZE       2
 #define L2CAP_FCS_SIZE          2
 
+/* L2CAP Command rej. reasons */
+#define L2CAP_REJ_NOT_UNDERSTOOD      0x0000
+#define L2CAP_REJ_MTU_EXCEEDED        0x0001
+#define L2CAP_REJ_INVALID_CID         0x0002
+
+
 /* L2CAP structures */
 struct l2cap_hdr {
 	__le16     len;
@@ -191,8 +197,19 @@ struct l2cap_cmd_hdr {
 } __packed;
 #define L2CAP_CMD_HDR_SIZE	4
 
-struct l2cap_cmd_rej {
+struct l2cap_cmd_rej_unk {
 	__le16     reason;
+} __packed;
+
+struct l2cap_cmd_rej_mtu {
+	__le16     reason;
+	__le16     max_mtu;
+} __packed;
+
+struct l2cap_cmd_rej_cid {
+	__le16     reason;
+	__le16     scid;
+	__le16     dcid;
 } __packed;
 
 struct l2cap_conn_req {

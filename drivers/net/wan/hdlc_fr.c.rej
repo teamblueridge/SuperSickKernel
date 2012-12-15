@@ -1,0 +1,21 @@
+--- drivers/net/wan/hdlc_fr.c
++++ drivers/net/wan/hdlc_fr.c
+@@ -1074,14 +1065,14 @@
+ 
+ 	used = pvc_is_used(pvc);
+ 
+-	if (type == ARPHRD_ETHER)
++	if (type == ARPHRD_ETHER) {
+ 		dev = alloc_netdev(0, "pvceth%d", ether_setup);
+-	else
++		dev->priv_flags &= ~IFF_TX_SKB_SHARING;
++	} else
+ 		dev = alloc_netdev(0, "pvc%d", pvc_setup);
+ 
+ 	if (!dev) {
+-		printk(KERN_WARNING "%s: Memory squeeze on fr_pvc()\n",
+-		       frad->name);
++		netdev_warn(frad, "Memory squeeze on fr_pvc()\n");
+ 		delete_unused_pvcs(hdlc);
+ 		return -ENOBUFS;
+ 	}

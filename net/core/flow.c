@@ -22,7 +22,7 @@
 #include <linux/cpumask.h>
 #include <linux/mutex.h>
 #include <net/flow.h>
-#include <asm/atomic.h>
+#include <linux/atomic.h>
 #include <linux/security.h>
 
 struct flow_cache_entry {
@@ -30,6 +30,7 @@ struct flow_cache_entry {
 		struct hlist_node	hlist;
 		struct list_head	gc_list;
 	} u;
+	struct net			*net;
 	u16				family;
 	u8				dir;
 	u32				genid;

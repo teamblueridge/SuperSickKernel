@@ -1,0 +1,13 @@
+--- arch/arm/kernel/setup.c
++++ arch/arm/kernel/setup.c
+@@ -987,6 +995,10 @@
+ 	"neon",
+ 	"vfpv3",
+ 	"vfpv3d16",
++	"tls",
++	"vfpv4",
++	"idiva",
++	"idivt",
+ 	NULL
+ };
+ 

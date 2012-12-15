@@ -934,8 +934,8 @@ int mnt_had_events(struct proc_mounts *p)
 	int res = 0;
 
 	br_read_lock(vfsmount_lock);
-	if (p->event != ns->event) {
-		p->event = ns->event;
+	if (p->m.poll_event != ns->event) {
+		p->m.poll_event = ns->event;
 		res = 1;
 	}
 	br_read_unlock(vfsmount_lock);
@@ -1874,7 +1874,7 @@ static int do_move_mount(struct path *path, char *old_name)
 		return -EPERM;
 	if (!old_name || !*old_name)
 		return -EINVAL;
-	err = kern_path(old_name, LOOKUP_FOLLOW, &old_path);
+	err = kern_path(old_name, LOOKUP_FOLLOW|LOOKUP_AUTOMOUNT, &old_path);
 	if (err)
 		return err;
 

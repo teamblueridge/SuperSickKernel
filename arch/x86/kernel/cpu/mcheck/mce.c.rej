@@ -1,0 +1,53 @@
+--- arch/x86/kernel/cpu/mcheck/mce.c
++++ arch/x86/kernel/cpu/mcheck/mce.c
+@@ -465,40 +487,13 @@
+ 	}
+ }
+ 
+-/*
+- * Get the address of the instruction at the time of the machine check
+- * error.
+- */
+-static inline void mce_get_rip(struct mce *m, struct pt_regs *regs)
+-{
+-
+-	if (regs && (m->mcgstatus & (MCG_STATUS_RIPV|MCG_STATUS_EIPV))) {
+-		m->ip = regs->ip;
+-		m->cs = regs->cs;
+-	} else {
+-		m->ip = 0;
+-		m->cs = 0;
+-	}
+-	if (rip_msr)
+-		m->ip = mce_rdmsrl(rip_msr);
+-}
++DEFINE_PER_CPU(struct irq_work, mce_irq_work);
+ 
+-#ifdef CONFIG_X86_LOCAL_APIC
+-/*
+- * Called after interrupts have been reenabled again
+- * when a MCE happened during an interrupts off region
+- * in the kernel.
+- */
+-asmlinkage void smp_mce_self_interrupt(struct pt_regs *regs)
++static void mce_irq_work_cb(struct irq_work *entry)
+ {
+-	ack_APIC_irq();
+-	exit_idle();
+-	irq_enter();
+ 	mce_notify_irq();
+ 	mce_schedule_work();
+-	irq_exit();
+ }
+-#endif
+ 
+ static void mce_report_event(struct pt_regs *regs)
+ {
+@@ -1026,7 +997,6 @@
+ 		if (severity == MCE_AO_SEVERITY && mce_usable_address(&m))
+ 			mce_ring_add(m.addr >> PAGE_SHIFT);
+ 
+-		mce_get_rip(&m, regs);
+ 		mce_log(&m);
+ 
+ 		if (severity > worst) {

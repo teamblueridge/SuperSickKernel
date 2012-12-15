@@ -34,7 +34,6 @@ struct resource_list_x {
 	resource_size_t start;
 	resource_size_t end;
 	resource_size_t add_size;
-	resource_size_t min_align;
 	unsigned long flags;
 };
 
@@ -66,7 +65,7 @@ void pci_realloc(void)
  */
 static void add_to_list(struct resource_list_x *head,
 		 struct pci_dev *dev, struct resource *res,
-		 resource_size_t add_size, resource_size_t min_align)
+		 resource_size_t add_size)
 {
 	struct resource_list_x *list = head;
 	struct resource_list_x *ln = list->next;
@@ -85,16 +84,13 @@ static void add_to_list(struct resource_list_x *head,
 	tmp->end = res->end;
 	tmp->flags = res->flags;
 	tmp->add_size = add_size;
-	tmp->min_align = min_align;
 	list->next = tmp;
 }
 
 static void add_to_failed_list(struct resource_list_x *head,
 				struct pci_dev *dev, struct resource *res)
 {
-	add_to_list(head, dev, res,
-			0 /* dont care */,
-			0 /* dont care */);
+	add_to_list(head, dev, res, 0);
 }
 
 static void __dev_sort_resources(struct pci_dev *dev,
@@ -654,7 +650,6 @@ static int pbus_size_mem(struct pci_bus *bus, unsigned long mask,
 	int order, max_order;
 	struct resource *b_res = find_free_bus_resource(bus, type);
 	unsigned int mem64_mask = 0;
-	resource_size_t children_add_size = 0;
 
 	if (!b_res)
 		return 0;

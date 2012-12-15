@@ -48,12 +48,16 @@ enum nfs4_client_state {
 	NFS4CLNT_SESSION_RESET,
 	NFS4CLNT_RECALL_SLOT,
 	NFS4CLNT_LEASE_CONFIRM,
+	NFS4CLNT_SERVER_SCOPE_MISMATCH,
 };
 
 enum nfs4_session_state {
 	NFS4_SESSION_INITING,
 	NFS4_SESSION_DRAINING,
 };
+
+#define NFS4_RENEW_TIMEOUT		0x01
+#define NFS4_RENEW_DELEGATION_CB	0x02
 
 struct nfs4_minor_version_ops {
 	u32	minor_version;
@@ -66,6 +70,8 @@ struct nfs4_minor_version_ops {
 			int cache_reply);
 	int	(*validate_stateid)(struct nfs_delegation *,
 			const nfs4_stateid *);
+	int	(*find_root_sec)(struct nfs_server *, struct nfs_fh *,
+			struct nfs_fsinfo *);
 	const struct nfs4_state_recovery_ops *reboot_recovery_ops;
 	const struct nfs4_state_recovery_ops *nograce_recovery_ops;
 	const struct nfs4_state_maintenance_ops *state_renewal_ops;
@@ -223,7 +229,7 @@ struct nfs4_state_recovery_ops {
 };
 
 struct nfs4_state_maintenance_ops {
-	int (*sched_state_renewal)(struct nfs_client *, struct rpc_cred *);
+	int (*sched_state_renewal)(struct nfs_client *, struct rpc_cred *, unsigned);
 	struct rpc_cred * (*get_state_renewal_cred_locked)(struct nfs_client *);
 	int (*renew_lease)(struct nfs_client *, struct rpc_cred *);
 };
@@ -235,11 +241,9 @@ extern const struct inode_operations nfs4_dir_inode_operations;
 extern int nfs4_proc_setclientid(struct nfs_client *, u32, unsigned short, struct rpc_cred *, struct nfs4_setclientid_res *);
 extern int nfs4_proc_setclientid_confirm(struct nfs_client *, struct nfs4_setclientid_res *arg, struct rpc_cred *);
 extern int nfs4_proc_exchange_id(struct nfs_client *clp, struct rpc_cred *cred);
-extern int nfs4_proc_async_renew(struct nfs_client *, struct rpc_cred *);
-extern int nfs4_proc_renew(struct nfs_client *, struct rpc_cred *);
 extern int nfs4_init_clientid(struct nfs_client *, struct rpc_cred *);
 extern int nfs41_init_clientid(struct nfs_client *, struct rpc_cred *);
-extern int nfs4_do_close(struct path *path, struct nfs4_state *state, gfp_t gfp_mask, int wait, bool roc);
+extern int nfs4_do_close(struct nfs4_state *state, gfp_t gfp_mask, int wait, bool roc);
 extern int nfs4_server_capabilities(struct nfs_server *server, struct nfs_fh *fhandle);
 extern int nfs4_proc_fs_locations(struct inode *dir, const struct qstr *name,
 		struct nfs4_fs_locations *fs_locations, struct page *page);
@@ -316,7 +320,7 @@ extern const struct nfs4_minor_version_ops *nfs_v4_minor_ops[];
 extern const u32 nfs4_fattr_bitmap[2];
 extern const u32 nfs4_statfs_bitmap[2];
 extern const u32 nfs4_pathconf_bitmap[2];
-extern const u32 nfs4_fsinfo_bitmap[2];
+extern const u32 nfs4_fsinfo_bitmap[3];
 extern const u32 nfs4_fs_locations_bitmap[2];
 
 /* nfs4renewd.c */
@@ -376,8 +380,8 @@ extern struct svc_version nfs4_callback_version4;
 
 #else
 
-#define nfs4_close_state(a, b, c) do { } while (0)
-#define nfs4_close_sync(a, b, c) do { } while (0)
+#define nfs4_close_state(a, b) do { } while (0)
+#define nfs4_close_sync(a, b) do { } while (0)
 
 #endif /* CONFIG_NFS_V4 */
 #endif /* __LINUX_FS_NFS_NFS4_FS.H */

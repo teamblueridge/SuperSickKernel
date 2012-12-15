@@ -1,0 +1,10 @@
+--- drivers/net/sfc/io.h
++++ drivers/net/sfc/io.h
+@@ -249,6 +254,7 @@
+ 	_efx_writed(efx, value->u32[2], reg + 8);
+ 	_efx_writed(efx, value->u32[3], reg + 12);
+ #endif
++	wmb();
+ }
+ #define efx_writeo_page(efx, value, reg, page)				\
+ 	_efx_writeo_page(efx, value,					\

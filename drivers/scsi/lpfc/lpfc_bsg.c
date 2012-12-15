@@ -42,6 +42,7 @@
 #include "lpfc.h"
 #include "lpfc_logmsg.h"
 #include "lpfc_crtn.h"
+#include "lpfc_debugfs.h"
 #include "lpfc_vport.h"
 #include "lpfc_version.h"
 
@@ -1549,7 +1550,6 @@ lpfc_bsg_diag_mode_exit(struct lpfc_hba *phba)
 /**
  * lpfc_sli3_bsg_diag_loopback_mode - process an sli3 bsg vendor command
  * @phba: Pointer to HBA context object.
- * @job: LPFC_BSG_VENDOR_DIAG_MODE
  *
  * This function is responsible for placing an sli3  port into diagnostic
  * loopback mode in order to perform a diagnostic loopback test.
@@ -1566,7 +1566,7 @@ lpfc_sli3_bsg_diag_loopback_mode(struct lpfc_hba *phba, struct fc_bsg_job *job)
 	uint32_t link_flags;
 	uint32_t timeout;
 	LPFC_MBOXQ_t *pmboxq;
-	int mbxstatus;
+	int mbxstatus = MBX_SUCCESS;
 	int i = 0;
 	int rc = 0;
 
@@ -1740,7 +1740,7 @@ lpfc_sli4_bsg_diag_loopback_mode(struct lpfc_hba *phba, struct fc_bsg_job *job)
 	uint32_t link_flags, timeout, req_len, alloc_len;
 	struct lpfc_mbx_set_link_diag_loopback *link_diag_loopback;
 	LPFC_MBOXQ_t *pmboxq = NULL;
-	int mbxstatus, i, rc = 0;
+	int mbxstatus = MBX_SUCCESS, i, rc = 0;
 
 	/* no data to return just the return code */
 	job->reply->reply_payload_rcv_len = 0;
@@ -3177,6 +3177,11 @@ lpfc_bsg_issue_mbox_ext_handle_job(struct lpfc_hba *phba, LPFC_MBOXQ_t *pmboxq)
 				"(x%x/x%x) complete bsg job done, bsize:%d\n",
 				phba->mbox_ext_buf_ctx.nembType,
 				phba->mbox_ext_buf_ctx.mboxType, size);
+		lpfc_idiag_mbxacc_dump_bsg_mbox(phba,
+					phba->mbox_ext_buf_ctx.nembType,
+					phba->mbox_ext_buf_ctx.mboxType,
+					dma_ebuf, sta_pos_addr,
+					phba->mbox_ext_buf_ctx.mbx_dmabuf, 0);
 	} else
 		spin_unlock_irqrestore(&phba->ct_ev_lock, flags);
 
@@ -3429,6 +3434,10 @@ lpfc_bsg_sli_cfg_read_cmd_ext(struct lpfc_hba *phba, struct fc_bsg_job *job,
 				"ext_buf_cnt:%d\n", ext_buf_cnt);
 	}
 
+	/* before dma descriptor setup */
+	lpfc_idiag_mbxacc_dump_bsg_mbox(phba, nemb_tp, mbox_rd, dma_mbox,
+					sta_pre_addr, dmabuf, ext_buf_cnt);
+
 	/* reject non-embedded mailbox command with none external buffer */
 	if (ext_buf_cnt == 0) {
 		rc = -EPERM;
@@ -3475,6 +3484,10 @@ lpfc_bsg_sli_cfg_read_cmd_ext(struct lpfc_hba *phba, struct fc_bsg_job *job,
 			ext_buf_index++;
 		}
 	}
+
+	/* after dma descriptor setup */
+	lpfc_idiag_mbxacc_dump_bsg_mbox(phba, nemb_tp, mbox_rd, dma_mbox,
+					sta_pos_addr, dmabuf, ext_buf_cnt);
 
 	/* construct base driver mbox command */
 	pmb = &pmboxq->u.mb;
@@ -3590,11 +3603,19 @@ lpfc_bsg_sli_cfg_write_cmd_ext(struct lpfc_hba *phba, struct fc_bsg_job *job,
 				"ext_buf_cnt:%d\n", ext_buf_cnt);
 	}
 
+	/* before dma buffer descriptor setup */
+	lpfc_idiag_mbxacc_dump_bsg_mbox(phba, nemb_tp, mbox_wr, dma_mbox,
+					sta_pre_addr, dmabuf, ext_buf_cnt);
+
 	if (ext_buf_cnt == 0)
 		return -EPERM;
 
 	/* for the first external buffer */
 	lpfc_bsg_sli_cfg_dma_desc_setup(phba, nemb_tp, 0, dmabuf, dmabuf);
+
+	/* after dma descriptor setup */
+	lpfc_idiag_mbxacc_dump_bsg_mbox(phba, nemb_tp, mbox_wr, dma_mbox,
+					sta_pos_addr, dmabuf, ext_buf_cnt);
 
 	/* log for looking forward */
 	for (i = 1; i < ext_buf_cnt; i++) {
@@ -3666,6 +3687,11 @@ lpfc_bsg_sli_cfg_write_cmd_ext(struct lpfc_hba *phba, struct fc_bsg_job *job,
 				"maibox command, rc:x%x\n", rc);
 		rc = -EPIPE;
 	}
+
+	/* wait for additoinal external buffers */
+	job->reply->result = 0;
+	job->job_done(job);
+	return SLI_CONFIG_HANDLED;
 
 	/* wait for additoinal external buffers */
 	job->reply->result = 0;
@@ -3844,6 +3870,12 @@ lpfc_bsg_read_ebuf_get(struct lpfc_hba *phba, struct fc_bsg_job *job)
 	dmabuf = list_first_entry(&phba->mbox_ext_buf_ctx.ext_dmabuf_list,
 				  struct lpfc_dmabuf, list);
 	list_del_init(&dmabuf->list);
+
+	/* after dma buffer descriptor setup */
+	lpfc_idiag_mbxacc_dump_bsg_mbox(phba, phba->mbox_ext_buf_ctx.nembType,
+					mbox_rd, dma_ebuf, sta_pos_addr,
+					dmabuf, index);
+
 	pbuf = (uint8_t *)dmabuf->virt;
 	job->reply->reply_payload_rcv_len =
 		sg_copy_from_buffer(job->reply_payload.sg_list,
@@ -3925,6 +3957,11 @@ lpfc_bsg_write_ebuf_set(struct lpfc_hba *phba, struct fc_bsg_job *job,
 					phba->mbox_ext_buf_ctx.mbx_dmabuf,
 					dmabuf);
 	list_add_tail(&dmabuf->list, &phba->mbox_ext_buf_ctx.ext_dmabuf_list);
+
+	/* after write dma buffer */
+	lpfc_idiag_mbxacc_dump_bsg_mbox(phba, phba->mbox_ext_buf_ctx.nembType,
+					mbox_wr, dma_ebuf, sta_pos_addr,
+					dmabuf, index);
 
 	if (phba->mbox_ext_buf_ctx.seqNum == phba->mbox_ext_buf_ctx.numBuf) {
 		lpfc_printf_log(phba, KERN_INFO, LOG_LIBDFC,

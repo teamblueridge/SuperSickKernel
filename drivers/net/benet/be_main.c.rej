@@ -1,0 +1,43 @@
+--- drivers/net/benet/be_main.c
++++ drivers/net/benet/be_main.c
+@@ -758,19 +763,19 @@
+ 			struct net_device *netdev)
+ {
+ 	struct be_adapter *adapter = netdev_priv(netdev);
+-	struct be_tx_obj *tx_obj = &adapter->tx_obj;
+-	struct be_queue_info *txq = &tx_obj->q;
++	struct be_tx_obj *txo = &adapter->tx_obj[skb_get_queue_mapping(skb)];
++	struct be_queue_info *txq = &txo->q;
+ 	u32 wrb_cnt = 0, copied = 0;
+ 	u32 start = txq->head;
+ 	bool dummy_wrb, stopped = false;
+ 
+ 	wrb_cnt = wrb_cnt_for_skb(adapter, skb, &dummy_wrb);
+ 
+-	copied = make_tx_wrbs(adapter, skb, wrb_cnt, dummy_wrb);
++	copied = make_tx_wrbs(adapter, txq, skb, wrb_cnt, dummy_wrb);
+ 	if (copied) {
+ 		/* record the sent skb in the sent_skb table */
+-		BUG_ON(tx_obj->sent_skb_list[start]);
+-		tx_obj->sent_skb_list[start] = skb;
++		BUG_ON(txo->sent_skb_list[start]);
++		txo->sent_skb_list[start] = skb;
+ 
+ 		/* Ensure txq has space for the next skb; Else stop the queue
+ 		 * *BEFORE* ringing the tx doorbell, so that we serialze the
+@@ -779,13 +784,13 @@
+ 		atomic_add(wrb_cnt, &txq->used);
+ 		if ((BE_MAX_TX_FRAG_COUNT + atomic_read(&txq->used)) >=
+ 								txq->len) {
+-			netif_stop_queue(netdev);
++			netif_stop_subqueue(netdev, skb_get_queue_mapping(skb));
+ 			stopped = true;
+ 		}
+ 
+ 		be_txq_notify(adapter, txq->id, wrb_cnt);
+ 
+-		be_tx_stats_update(adapter, wrb_cnt, copied,
++		be_tx_stats_update(txo, wrb_cnt, copied,
+ 				skb_shinfo(skb)->gso_segs, stopped);
+ 	} else {
+ 		txq->head = start;

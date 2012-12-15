@@ -1,0 +1,12 @@
+--- drivers/mmc/host/sdhci.c
++++ drivers/mmc/host/sdhci.c
+@@ -1865,9 +1867,6 @@
+ 
+ 	del_timer(&host->timer);
+ 
+-	if (host->version >= SDHCI_SPEC_300)
+-		del_timer(&host->tuning_timer);
+-
+ 	mrq = host->mrq;
+ 
+ 	/*

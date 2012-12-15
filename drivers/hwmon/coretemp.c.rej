@@ -1,0 +1,54 @@
+--- drivers/hwmon/coretemp.c
++++ drivers/hwmon/coretemp.c
+@@ -36,15 +36,25 @@
+ #include <linux/cpu.h>
+ #include <linux/pci.h>
+ #include <linux/smp.h>
++#include <linux/moduleparam.h>
+ #include <asm/msr.h>
+ #include <asm/processor.h>
+ 
+ #define DRVNAME	"coretemp"
+ 
++/*
++ * force_tjmax only matters when TjMax can't be read from the CPU itself.
++ * When set, it replaces the driver's suboptimal heuristic.
++ */
++static int force_tjmax;
++module_param_named(tjmax, force_tjmax, int, 0444);
++MODULE_PARM_DESC(tjmax, "TjMax value in degrees Celsius");
++
+ #define BASE_SYSFS_ATTR_NO	2	/* Sysfs Base attr no for coretemp */
+ #define NUM_REAL_CORES		16	/* Number of Real cores per cpu */
+ #define CORETEMP_NAME_LENGTH	17	/* String Length of attrs */
+-#define MAX_ATTRS		5	/* Maximum no of per-core attrs */
++#define MAX_CORE_ATTRS		4	/* Maximum no of basic attrs */
++#define TOTAL_ATTRS		(MAX_CORE_ATTRS + 1)
+ #define MAX_CORE_DATA		(NUM_REAL_CORES + BASE_SYSFS_ATTR_NO)
+ 
+ #ifdef CONFIG_SMP
+@@ -496,22 +476,20 @@
+ 
+ 	return 0;
+ exit_free:
++	pdata->core_data[attr_no] = NULL;
+ 	kfree(tdata);
+ 	return err;
+ }
+ 
+ static void coretemp_add_core(unsigned int cpu, int pkg_flag)
+ {
+-	struct platform_data *pdata;
+ 	struct platform_device *pdev = coretemp_get_pdev(cpu);
+ 	int err;
+ 
+ 	if (!pdev)
+ 		return;
+ 
+-	pdata = platform_get_drvdata(pdev);
+-
+-	err = create_core_data(pdata, pdev, cpu, pkg_flag);
++	err = create_core_data(pdev, cpu, pkg_flag);
+ 	if (err)
+ 		dev_err(&pdev->dev, "Adding Core %u failed\n", cpu);
+ }

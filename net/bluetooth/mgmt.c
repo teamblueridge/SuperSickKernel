@@ -55,7 +55,7 @@ struct mgmt_pending_free_work {
 	struct sock *sk;
 };
 
-LIST_HEAD(cmd_list);
+static LIST_HEAD(cmd_list);
 
 static int cmd_status(struct sock *sk, u16 index, u16 cmd, u8 status)
 {
@@ -1273,8 +1273,6 @@ static int get_connections(struct sock *sk, u16 index)
 
 	put_unaligned_le16(count, &rp->conn_count);
 
-	read_lock(&hci_dev_list_lock);
-
 	i = 0;
 	list_for_each(p, &hdev->conn_hash.list) {
 		struct hci_conn *c = list_entry(p, struct hci_conn, list);
@@ -1407,7 +1405,6 @@ static int pin_code_neg_reply(struct sock *sk, u16 index, unsigned char *data,
 {
 	struct hci_dev *hdev;
 	struct mgmt_cp_pin_code_neg_reply *cp;
-	struct pending_cmd *cmd;
 	int err;
 
 	BT_DBG("");
@@ -2327,6 +2324,70 @@ static int remove_remote_oob_data(struct sock *sk, u16 index,
 								NULL, 0);
 
 	hci_dev_unlock_bh(hdev);
+	hci_dev_put(hdev);
+
+	return err;
+}
+
+static int block_device(struct sock *sk, u16 index, unsigned char *data,
+								u16 len)
+{
+	struct hci_dev *hdev;
+	struct mgmt_cp_block_device *cp;
+	int err;
+
+	BT_DBG("hci%u", index);
+
+	cp = (void *) data;
+
+	if (len != sizeof(*cp))
+		return cmd_status(sk, index, MGMT_OP_BLOCK_DEVICE,
+							EINVAL);
+
+	hdev = hci_dev_get(index);
+	if (!hdev)
+		return cmd_status(sk, index, MGMT_OP_BLOCK_DEVICE,
+							ENODEV);
+
+	err = hci_blacklist_add(hdev, &cp->bdaddr);
+
+	if (err < 0)
+		err = cmd_status(sk, index, MGMT_OP_BLOCK_DEVICE, -err);
+	else
+		err = cmd_complete(sk, index, MGMT_OP_BLOCK_DEVICE,
+							NULL, 0);
+	hci_dev_put(hdev);
+
+	return err;
+}
+
+static int unblock_device(struct sock *sk, u16 index, unsigned char *data,
+								u16 len)
+{
+	struct hci_dev *hdev;
+	struct mgmt_cp_unblock_device *cp;
+	int err;
+
+	BT_DBG("hci%u", index);
+
+	cp = (void *) data;
+
+	if (len != sizeof(*cp))
+		return cmd_status(sk, index, MGMT_OP_UNBLOCK_DEVICE,
+								EINVAL);
+
+	hdev = hci_dev_get(index);
+	if (!hdev)
+		return cmd_status(sk, index, MGMT_OP_UNBLOCK_DEVICE,
+								ENODEV);
+
+	err = hci_blacklist_del(hdev, &cp->bdaddr);
+
+	if (err < 0)
+		err = cmd_status(sk, index, MGMT_OP_UNBLOCK_DEVICE, -err);
+	else
+		err = cmd_complete(sk, index, MGMT_OP_UNBLOCK_DEVICE,
+								NULL, 0);
 	hci_dev_put(hdev);
 
 	return err;

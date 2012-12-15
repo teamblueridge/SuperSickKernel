@@ -124,17 +124,6 @@ static const struct via_isa_bridge {
 	{ NULL }
 };
 
-static const struct dmi_system_id no_atapi_dma_dmi_table[] = {
-	{
-		.ident = "AVERATEC 3200",
-		.matches = {
-			DMI_MATCH(DMI_BOARD_VENDOR, "AVERATEC"),
-			DMI_MATCH(DMI_BOARD_NAME, "3200"),
-		},
-	},
-	{ }
-};
-
 struct via_port {
 	u8 cached_device;
 };

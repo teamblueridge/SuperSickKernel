@@ -34,6 +34,17 @@
 
 #include "internal.h"
 
+/*
+ * online_page_callback contains pointer to current page onlining function.
+ * Initially it is generic_online_page(). If it is required it could be
+ * changed by calling set_online_page_callback() for callback registration
+ * and restore_online_page_callback() for generic callback restore.
+ */
+
+static void generic_online_page(struct page *page);
+
+static online_page_callback_t online_page_callback = generic_online_page;
+
 DEFINE_MUTEX(mem_hotplug_mutex);
 
 void lock_memory_hotplug(void)
@@ -409,7 +420,7 @@ static int online_pages_range(unsigned long start_pfn, unsigned long nr_pages,
 	if (PageReserved(pfn_to_page(start_pfn)))
 		for (i = 0; i < nr_pages; i++) {
 			page = pfn_to_page(start_pfn + i);
-			online_page(page);
+			(*online_page_callback)(page);
 			onlined_pages++;
 		}
 	*(unsigned long *)arg = onlined_pages;

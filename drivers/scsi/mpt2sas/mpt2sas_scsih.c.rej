@@ -1,0 +1,64 @@
+--- drivers/scsi/mpt2sas/mpt2sas_scsih.c
++++ drivers/scsi/mpt2sas/mpt2sas_scsih.c
+@@ -1960,7 +1964,7 @@
+ 		case MPI2_RAID_VOL_TYPE_RAID1E:
+ 			qdepth = MPT2SAS_RAID_QUEUE_DEPTH;
+ 			if (ioc->manu_pg10.OEMIdentifier &&
+-			    (ioc->manu_pg10.GenericFlags0 &
++			    (le32_to_cpu(ioc->manu_pg10.GenericFlags0) &
+ 			    MFG10_GF0_R10_DISPLAY) &&
+ 			    !(raid_device->num_pds % 2))
+ 				r_level = "RAID10";
+@@ -3763,7 +3828,7 @@
+ 		return 0;
+ 	}
+ 
+-	if (ioc->pci_error_recovery) {
++	if (ioc->pci_error_recovery || ioc->remove_host) {
+ 		scmd->result = DID_NO_CONNECT << 16;
+ 		scmd->scsi_done(scmd);
+ 		return 0;
+@@ -4667,7 +4736,7 @@
+ 	Mpi2SasEnclosurePage0_t enclosure_pg0;
+ 	u32 ioc_status;
+ 	u16 parent_handle;
+-	__le64 sas_address, sas_address_parent = 0;
++	u64 sas_address, sas_address_parent = 0;
+ 	int i;
+ 	unsigned long flags;
+ 	struct _sas_port *mpt2sas_port = NULL;
+@@ -5474,7 +5544,7 @@
+ {
+ 	struct MPT2SAS_TARGET *target_priv_data;
+ 	struct _sas_device *sas_device;
+-	__le64 sas_address;
++	u64 sas_address;
+ 	unsigned long flags;
+ 	Mpi2EventDataSasDeviceStatusChange_t *event_data =
+ 	    fw_event->event_data;
+@@ -7354,7 +7497,6 @@
+ 	}
+ 
+ 	sas_remove_host(shost);
+-	_scsih_shutdown(pdev);
+ 	list_del(&ioc->list);
+ 	scsi_remove_host(shost);
+ 	scsi_host_put(shost);
+@@ -7667,7 +7828,7 @@
+ {
+ 	struct Scsi_Host *shost = pci_get_drvdata(pdev);
+ 	struct MPT2SAS_ADAPTER *ioc = shost_priv(shost);
+-	u32 device_state;
++	pci_power_t device_state;
+ 
+ 	mpt2sas_base_stop_watchdog(ioc);
+ 	scsi_block_requests(shost);
+@@ -7694,7 +7855,7 @@
+ {
+ 	struct Scsi_Host *shost = pci_get_drvdata(pdev);
+ 	struct MPT2SAS_ADAPTER *ioc = shost_priv(shost);
+-	u32 device_state = pdev->current_state;
++	pci_power_t device_state = pdev->current_state;
+ 	int r;
+ 
+ 	printk(MPT2SAS_INFO_FMT "pdev=0x%p, slot=%s, previous "

@@ -1,0 +1,57 @@
+--- drivers/net/wireless/rt2x00/rt2x00queue.c
++++ drivers/net/wireless/rt2x00/rt2x00queue.c
+@@ -559,33 +562,18 @@
+ 			       bool local)
+ {
+ 	struct ieee80211_tx_info *tx_info;
+-	struct queue_entry *entry = rt2x00queue_get_entry(queue, Q_INDEX);
++	struct queue_entry *entry;
+ 	struct txentry_desc txdesc;
+ 	struct skb_frame_desc *skbdesc;
+ 	u8 rate_idx, rate_flags;
+-
+-	if (unlikely(rt2x00queue_full(queue))) {
+-		ERROR(queue->rt2x00dev,
+-		      "Dropping frame due to full tx queue %d.\n", queue->qid);
+-		return -ENOBUFS;
+-	}
+-
+-	if (unlikely(test_and_set_bit(ENTRY_OWNER_DEVICE_DATA,
+-				      &entry->flags))) {
+-		ERROR(queue->rt2x00dev,
+-		      "Arrived at non-free entry in the non-full queue %d.\n"
+-		      "Please file bug report to %s.\n",
+-		      queue->qid, DRV_PROJECT);
+-		return -EINVAL;
+-	}
++	int ret = 0;
+ 
+ 	/*
+ 	 * Copy all TX descriptor information into txdesc,
+ 	 * after that we are free to use the skb->cb array
+ 	 * for our information.
+ 	 */
+-	entry->skb = skb;
+-	rt2x00queue_create_tx_descriptor(entry, &txdesc);
++	rt2x00queue_create_tx_descriptor(queue->rt2x00dev, skb, &txdesc);
+ 
+ 	/*
+ 	 * All information is retrieved from the skb->cb array,
+@@ -661,7 +672,8 @@
+ 	if (unlikely(rt2x00queue_write_tx_data(entry, &txdesc))) {
+ 		clear_bit(ENTRY_OWNER_DEVICE_DATA, &entry->flags);
+ 		entry->skb = NULL;
+-		return -EIO;
++		ret = -EIO;
++		goto out;
+ 	}
+ 
+ 	set_bit(ENTRY_DATA_PENDING, &entry->flags);
+@@ -1213,6 +1227,7 @@
+ 			     struct data_queue *queue, enum data_queue_qid qid)
+ {
+ 	mutex_init(&queue->status_lock);
++	spin_lock_init(&queue->tx_lock);
+ 	spin_lock_init(&queue->index_lock);
+ 
+ 	queue->rt2x00dev = rt2x00dev;

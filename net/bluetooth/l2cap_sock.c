@@ -320,6 +320,8 @@ static int l2cap_sock_listen(struct socket *sock, int backlog)
 
 	sk->sk_max_ack_backlog = backlog;
 	sk->sk_ack_backlog = 0;
+
+	chan->state = BT_LISTEN;
 	sk->sk_state = BT_LISTEN;
 
 done:
@@ -336,30 +338,26 @@ static int l2cap_sock_accept(struct socket *sock, struct socket *newsock, int fl
 
 	lock_sock_nested(sk, SINGLE_DEPTH_NESTING);
 
-	if (sk->sk_state != BT_LISTEN) {
-		err = -EBADFD;
-		goto done;
-	}
-
 	timeo = sock_rcvtimeo(sk, flags & O_NONBLOCK);
 
 	BT_DBG("sk %p timeo %ld", sk, timeo);
 
 	/* Wait for an incoming connection. (wake-one). */
 	add_wait_queue_exclusive(sk_sleep(sk), &wait);
-	while (!(nsk = bt_accept_dequeue(sk, newsock))) {
+	while (1) {
 		set_current_state(TASK_INTERRUPTIBLE);
-		if (!timeo) {
-			err = -EAGAIN;
-			break;
-		}
-
-		release_sock(sk);
-		timeo = schedule_timeout(timeo);
-		lock_sock_nested(sk, SINGLE_DEPTH_NESTING);
 
 		if (sk->sk_state != BT_LISTEN) {
 			err = -EBADFD;
+			break;
+		}
+
+		nsk = bt_accept_dequeue(sk, newsock);
+		if (nsk)
+			break;
+
+		if (!timeo) {
+			err = -EAGAIN;
 			break;
 		}
 
@@ -367,8 +365,12 @@ static int l2cap_sock_accept(struct socket *sock, struct socket *newsock, int fl
 			err = sock_intr_errno(timeo);
 			break;
 		}
+
+		release_sock(sk);
+		timeo = schedule_timeout(timeo);
+		lock_sock_nested(sk, SINGLE_DEPTH_NESTING);
 	}
-	set_current_state(TASK_RUNNING);
+	__set_current_state(TASK_RUNNING);
 	remove_wait_queue(sk_sleep(sk), &wait);
 
 	if (err)
@@ -485,6 +487,21 @@ static int l2cap_sock_getsockopt_old(struct socket *sock, int optname, char __us
 
 		break;
 
+	case BT_POWER:
+		if (sk->sk_type != SOCK_SEQPACKET && sk->sk_type != SOCK_STREAM
+				&& sk->sk_type != SOCK_RAW) {
+			err = -EINVAL;
+			break;
+		}
+
+		pwr.force_active = chan->force_active;
+
+		len = min_t(unsigned int, len, sizeof(pwr));
+		if (copy_to_user(optval, (char *) &pwr, len))
+			err = -EFAULT;
+
+		break;
+
 	default:
 		err = -ENOPROTOOPT;
 		break;
@@ -516,8 +533,8 @@ static int l2cap_sock_getsockopt(struct socket *sock, int level, int optname, ch
 
 	switch (optname) {
 	case BT_SECURITY:
-		if (sk->sk_type != SOCK_SEQPACKET && sk->sk_type != SOCK_STREAM
-				&& sk->sk_type != SOCK_RAW) {
+		if (chan->chan_type != L2CAP_CHAN_CONN_ORIENTED &&
+					chan->chan_type != L2CAP_CHAN_RAW) {
 			err = -EINVAL;
 			break;
 		}
@@ -576,6 +593,23 @@ static int l2cap_sock_getsockopt(struct socket *sock, int level, int optname, ch
 		if (copy_to_user(optval, (char *) &bt_sk(sk)->le_params,
 						sizeof(bt_sk(sk)->le_params)))
 			err = -EFAULT;
+		break;
+
+	case BT_POWER:
+		if (chan->chan_type != L2CAP_CHAN_CONN_ORIENTED &&
+					chan->chan_type != L2CAP_CHAN_RAW) {
+			err = -EINVAL;
+			break;
+		}
+
+		pwr.force_active = BT_POWER_FORCE_ACTIVE_ON;
+
+		len = min_t(unsigned int, sizeof(pwr), optlen);
+		if (copy_from_user((char *) &pwr, optval, len)) {
+			err = -EFAULT;
+			break;
+		}
+		chan->force_active = pwr.force_active;
 		break;
 
 	default:
@@ -1156,8 +1190,7 @@ static int l2cap_sock_shutdown(struct socket *sock, int how)
 		}
 
 		sk->sk_shutdown = SHUTDOWN_MASK;
-		l2cap_sock_clear_timer(sk);
-		__l2cap_sock_close(sk, 0);
+		l2cap_chan_close(chan, 0);
 
 		if (sock_flag(sk, SOCK_LINGER) && sk->sk_lingertime)
 			err = bt_sock_wait_state(sk, BT_CLOSED,
@@ -1289,9 +1322,10 @@ static struct proto l2cap_proto = {
 	.obj_size	= sizeof(struct l2cap_pinfo)
 };
 
-struct sock *l2cap_sock_alloc(struct net *net, struct socket *sock, int proto, gfp_t prio)
+static struct sock *l2cap_sock_alloc(struct net *net, struct socket *sock, int proto, gfp_t prio)
 {
 	struct sock *sk;
+	struct l2cap_chan *chan;
 
 	sk = sk_alloc(net, PF_BLUETOOTH, prio, &l2cap_proto);
 	if (!sk)
@@ -1301,14 +1335,20 @@ struct sock *l2cap_sock_alloc(struct net *net, struct socket *sock, int proto, g
 	INIT_LIST_HEAD(&bt_sk(sk)->accept_q);
 
 	sk->sk_destruct = l2cap_sock_destruct;
-	sk->sk_sndtimeo = msecs_to_jiffies(L2CAP_CONN_TIMEOUT);
+	sk->sk_sndtimeo = L2CAP_CONN_TIMEOUT;
 
 	sock_reset_flag(sk, SOCK_ZAPPED);
 
 	sk->sk_protocol = proto;
 	sk->sk_state = BT_OPEN;
 
-	setup_timer(&sk->sk_timer, l2cap_sock_timeout, (unsigned long) sk);
+	chan = l2cap_chan_create(sk);
+	if (!chan) {
+		l2cap_sock_kill(sk);
+		return NULL;
+	}
+
+	l2cap_pi(sk)->chan = chan;
 
 	bt_sock_link(&l2cap_sk_list, sk);
 	return sk;

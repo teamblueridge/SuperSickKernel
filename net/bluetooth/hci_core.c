@@ -42,7 +42,6 @@
 #include <linux/notifier.h>
 #include <linux/rfkill.h>
 #include <linux/timer.h>
-#include <linux/crypto.h>
 #include <net/sock.h>
 
 #include <asm/system.h>
@@ -1576,9 +1575,6 @@ int hci_unregister_dev(struct hci_dev *hdev)
 		hci_dev_unlock_bh(hdev);
 	}
 
-	if (!IS_ERR(hdev->tfm))
-		crypto_free_blkcipher(hdev->tfm);
-
 	hci_notify(hdev, HCI_DEV_UNREG);
 
 	if (hdev->rfkill) {
@@ -1602,7 +1598,6 @@ int hci_unregister_dev(struct hci_dev *hdev)
 	hci_uuids_clear(hdev);
 	hci_link_keys_clear(hdev);
 	hci_remote_oob_data_clear(hdev);
-	hci_adv_entries_clear(hdev);
 	hci_dev_unlock_bh(hdev);
 
 	__hci_dev_put(hdev);
@@ -2234,7 +2229,7 @@ static inline void hci_sched_acl(struct hci_dev *hdev)
 			if (count > hdev->acl_cnt)
 				return;
 
-			hci_conn_enter_active_mode(conn, bt_cb(skb)->force_active);
+			hci_conn_enter_active_mode(conn);
 
 			hci_send_frame(skb);
 			hdev->acl_last_tx = jiffies;
@@ -2375,7 +2370,7 @@ static inline void hci_acldata_packet(struct hci_dev *hdev, struct sk_buff *skb)
 	if (conn) {
 		register struct hci_proto *hp;
 
-		hci_conn_enter_active_mode(conn, bt_cb(skb)->force_active);
+		hci_conn_enter_active_mode(conn);
 
 		/* Send to upper protocol */
 		hp = hci_proto[HCI_PROTO_L2CAP];

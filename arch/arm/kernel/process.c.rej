@@ -1,0 +1,10 @@
+--- arch/arm/kernel/process.c
++++ arch/arm/kernel/process.c
+@@ -30,6 +30,7 @@
+ #include <linux/uaccess.h>
+ #include <linux/random.h>
+ #include <linux/hw_breakpoint.h>
++#include <linux/cpuidle.h>
+ 
+ #include <asm/cacheflush.h>
+ #include <asm/leds.h>

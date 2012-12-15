@@ -1,0 +1,11 @@
+--- drivers/net/wan/ixp4xx_hss.c
++++ drivers/net/wan/ixp4xx_hss.c
+@@ -8,6 +8,8 @@
+  * as published by the Free Software Foundation.
+  */
+ 
++#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
++
+ #include <linux/bitops.h>
+ #include <linux/cdev.h>
+ #include <linux/dma-mapping.h>

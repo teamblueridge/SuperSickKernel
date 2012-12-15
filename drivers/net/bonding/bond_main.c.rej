@@ -1,0 +1,47 @@
+--- drivers/net/bonding/bond_main.c
++++ drivers/net/bonding/bond_main.c
+@@ -1435,6 +1370,8 @@
+ 	struct sk_buff *skb = *pskb;
+ 	struct slave *slave;
+ 	struct bonding *bond;
++	void (*recv_probe)(struct sk_buff *, struct bonding *,
++				struct slave *);
+ 
+ 	skb = skb_share_check(skb, GFP_ATOMIC);
+ 	if (unlikely(!skb))
+@@ -1448,11 +1385,12 @@
+ 	if (bond->params.arp_interval)
+ 		slave->dev->last_rx = jiffies;
+ 
+-	if (bond->recv_probe) {
++	recv_probe = ACCESS_ONCE(bond->recv_probe);
++	if (recv_probe) {
+ 		struct sk_buff *nskb = skb_clone(skb, GFP_ATOMIC);
+ 
+ 		if (likely(nskb)) {
+-			bond->recv_probe(nskb, bond, slave);
++			recv_probe(nskb, bond, slave);
+ 			dev_kfree_skb(nskb);
+ 		}
+ 	}
+@@ -1560,8 +1498,10 @@
+ 
+ 			if (slave_dev->type != ARPHRD_ETHER)
+ 				bond_setup_by_slave(bond_dev, slave_dev);
+-			else
++			else {
+ 				ether_setup(bond_dev);
++				bond_dev->priv_flags &= ~IFF_TX_SKB_SHARING;
++			}
+ 
+ 			netdev_bonding_change(bond_dev,
+ 					      NETDEV_POST_TYPE_CHANGE);
+@@ -4351,7 +4309,7 @@
+ 	bond_dev->tx_queue_len = 0;
+ 	bond_dev->flags |= IFF_MASTER|IFF_MULTICAST;
+ 	bond_dev->priv_flags |= IFF_BONDING;
+-	bond_dev->priv_flags &= ~IFF_XMIT_DST_RELEASE;
++	bond_dev->priv_flags &= ~(IFF_XMIT_DST_RELEASE | IFF_TX_SKB_SHARING);
+ 
+ 	/* At first, we block adding VLANs. That's the only way to
+ 	 * prevent problems that occur when adding VLANs over an

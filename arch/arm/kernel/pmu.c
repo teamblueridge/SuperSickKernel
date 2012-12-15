@@ -17,6 +17,7 @@
 #include <linux/interrupt.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/of_device.h>
 #include <linux/platform_device.h>
 
 #include <asm/pmu.h>
@@ -102,11 +103,11 @@ reserve_pmu(enum arm_pmu_type device)
 EXPORT_SYMBOL_GPL(reserve_pmu);
 
 int
-release_pmu(struct platform_device *pdev)
+release_pmu(enum arm_pmu_type type)
 {
-	if (WARN_ON(pdev != pmu_devices[pdev->id]))
+	if (WARN_ON(!pmu_devices[type]))
 		return -EINVAL;
-	clear_bit_unlock(pdev->id, &pmu_lock);
+	clear_bit_unlock(type, &pmu_lock);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(release_pmu);
@@ -154,17 +155,17 @@ init_cpu_pmu(void)
 }
 
 int
-init_pmu(enum arm_pmu_type device)
+init_pmu(enum arm_pmu_type type)
 {
 	int err = 0;
 
-	switch (device) {
+	switch (type) {
 	case ARM_PMU_DEVICE_CPU:
 		err = init_cpu_pmu();
 		break;
 	default:
-		pr_warning("attempt to initialise unknown device %d\n",
-				device);
+		pr_warning("attempt to initialise PMU of unknown "
+			   "type %d\n", type);
 		err = -EINVAL;
 	}
 

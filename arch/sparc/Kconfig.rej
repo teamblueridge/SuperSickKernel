@@ -1,0 +1,11 @@
+--- arch/sparc/Kconfig
++++ arch/sparc/Kconfig
+@@ -54,6 +55,8 @@
+ 	select HAVE_PERF_EVENTS
+ 	select PERF_USE_VMALLOC
+ 	select IRQ_PREFLOW_FASTEOI
++	select ARCH_HAVE_NMI_SAFE_CMPXCHG
++	select HAVE_C_RECORDMCOUNT
+ 
+ config ARCH_DEFCONFIG
+ 	string

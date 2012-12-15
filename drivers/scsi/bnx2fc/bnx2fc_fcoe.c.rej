@@ -1,0 +1,204 @@
+--- drivers/scsi/bnx2fc/bnx2fc_fcoe.c
++++ drivers/scsi/bnx2fc/bnx2fc_fcoe.c
+@@ -1187,64 +1185,83 @@
+ 
+ 	hba->cnic = cnic;
+ 	rc = bnx2fc_bind_pcidev(hba);
+-	if (rc)
++	if (rc) {
++		printk(KERN_ERR PFX "create_adapter:  bind error\n");
+ 		goto bind_err;
++	}
+ 	hba->phys_dev = cnic->netdev;
+-	/* will get overwritten after we do vlan discovery */
+-	hba->netdev = hba->phys_dev;
++	hba->next_conn_id = 0;
++
++	hba->tgt_ofld_list =
++		kzalloc(sizeof(struct bnx2fc_rport *) * BNX2FC_NUM_MAX_SESS,
++			GFP_KERNEL);
++	if (!hba->tgt_ofld_list) {
++		printk(KERN_ERR PFX "Unable to allocate tgt offload list\n");
++		goto tgtofld_err;
++	}
++
++	hba->num_ofld_sess = 0;
++
++	hba->cmd_mgr = bnx2fc_cmd_mgr_alloc(hba, BNX2FC_MIN_XID,
++						BNX2FC_MAX_XID);
++	if (!hba->cmd_mgr) {
++		printk(KERN_ERR PFX "em_config:bnx2fc_cmd_mgr_alloc failed\n");
++		goto cmgr_err;
++	}
+ 
+ 	init_waitqueue_head(&hba->shutdown_wait);
+ 	init_waitqueue_head(&hba->destroy_wait);
++	INIT_LIST_HEAD(&hba->vports);
+ 
+ 	return hba;
++
++cmgr_err:
++	kfree(hba->tgt_ofld_list);
++tgtofld_err:
++	bnx2fc_unbind_pcidev(hba);
+ bind_err:
+-	printk(KERN_ERR PFX "create_interface: bind error\n");
+ 	kfree(hba);
+ 	return NULL;
+ }
+ 
+-static int bnx2fc_interface_setup(struct bnx2fc_hba *hba,
+-				  enum fip_state fip_mode)
++struct bnx2fc_interface *bnx2fc_interface_create(struct bnx2fc_hba *hba,
++				      struct net_device *netdev,
++				      enum fip_state fip_mode)
+ {
++	struct bnx2fc_interface *interface;
+ 	int rc = 0;
+-	struct net_device *netdev = hba->netdev;
+-	struct fcoe_ctlr *fip = &hba->ctlr;
+ 
++	interface = kzalloc(sizeof(*interface), GFP_KERNEL);
++	if (!interface) {
++		printk(KERN_ERR PFX "Unable to allocate interface structure\n");
++		return NULL;
++	}
+ 	dev_hold(netdev);
+-	kref_init(&hba->kref);
+-
+-	hba->flags = 0;
++	kref_init(&interface->kref);
++	interface->hba = hba;
++	interface->netdev = netdev;
+ 
+ 	/* Initialize FIP */
+-	memset(fip, 0, sizeof(*fip));
+-	fcoe_ctlr_init(fip, fip_mode);
+-	hba->ctlr.send = bnx2fc_fip_send;
+-	hba->ctlr.update_mac = bnx2fc_update_src_mac;
+-	hba->ctlr.get_src_addr = bnx2fc_get_src_mac;
+-	set_bit(BNX2FC_CTLR_INIT_DONE, &hba->init_done);
+-
+-	rc = bnx2fc_netdev_setup(hba);
+-	if (rc)
+-		goto setup_err;
++	fcoe_ctlr_init(&interface->ctlr, fip_mode);
++	interface->ctlr.send = bnx2fc_fip_send;
++	interface->ctlr.update_mac = bnx2fc_update_src_mac;
++	interface->ctlr.get_src_addr = bnx2fc_get_src_mac;
++	set_bit(BNX2FC_CTLR_INIT_DONE, &interface->if_flags);
+ 
+-	hba->next_conn_id = 0;
++	rc = bnx2fc_netdev_setup(interface);
++	if (!rc)
++		return interface;
+ 
+-	memset(hba->tgt_ofld_list, 0, sizeof(hba->tgt_ofld_list));
+-	hba->num_ofld_sess = 0;
+-
+-	return 0;
+-
+-setup_err:
+-	fcoe_ctlr_destroy(&hba->ctlr);
++	fcoe_ctlr_destroy(&interface->ctlr);
+ 	dev_put(netdev);
+-	bnx2fc_interface_put(hba);
+-	return rc;
++	kfree(interface);
++	return NULL;
+ }
+ 
+ /**
+  * bnx2fc_if_create - Create FCoE instance on a given interface
+  *
+- * @hba:	FCoE interface to create a local port on
++ * @interface:	FCoE interface to create a local port on
+  * @parent:	Device pointer to be the parent in sysfs for the SCSI host
+  * @npiv:	Indicates if the port is vport or not
+  *
+@@ -1252,15 +1269,23 @@
+  *
+  * Returns:	Allocated fc_lport or an error pointer
+  */
+-static struct fc_lport *bnx2fc_if_create(struct bnx2fc_hba *hba,
++static struct fc_lport *bnx2fc_if_create(struct bnx2fc_interface *interface,
+ 				  struct device *parent, int npiv)
+ {
+ 	struct fc_lport		*lport, *n_port;
+ 	struct fcoe_port	*port;
+ 	struct Scsi_Host	*shost;
+ 	struct fc_vport		*vport = dev_to_vport(parent);
++	struct bnx2fc_lport	*blport;
++	struct bnx2fc_hba	*hba;
+ 	int			rc = 0;
+ 
++	blport = kzalloc(sizeof(struct bnx2fc_lport), GFP_KERNEL);
++	if (!blport) {
++		BNX2FC_HBA_DBG(interface->ctlr.lp, "Unable to alloc blport\n");
++		return NULL;
++	}
++
+ 	/* Allocate Scsi_Host structure */
+ 	if (!npiv)
+ 		lport = libfc_host_alloc(&bnx2fc_shost_template, sizeof(*port));
+@@ -1269,12 +1294,12 @@
+ 
+ 	if (!lport) {
+ 		printk(KERN_ERR PFX "could not allocate scsi host structure\n");
+-		return NULL;
++		goto free_blport;
+ 	}
+ 	shost = lport->host;
+ 	port = lport_priv(lport);
+ 	port->lport = lport;
+-	port->priv = hba;
++	port->priv = interface;
+ 	INIT_WORK(&port->destroy_work, bnx2fc_destroy_work);
+ 
+ 	/* Configure fcoe_port */
+@@ -1324,30 +1349,38 @@
+ 		goto shost_err;
+ 	}
+ 
+-	bnx2fc_interface_get(hba);
++	bnx2fc_interface_get(interface);
++
++	hba = interface->hba;
++	spin_lock_bh(&hba->hba_lock);
++	blport->lport = lport;
++	list_add_tail(&blport->list, &hba->vports);
++	spin_unlock_bh(&hba->hba_lock);
++
+ 	return lport;
+ 
+ shost_err:
+ 	scsi_remove_host(shost);
+ lp_config_err:
+ 	scsi_host_put(lport->host);
++free_blport:
++	kfree(blport);
+ 	return NULL;
+ }
+ 
+-static void bnx2fc_netdev_cleanup(struct bnx2fc_hba *hba)
++static void bnx2fc_netdev_cleanup(struct bnx2fc_interface *interface)
+ {
+ 	/* Dont listen for Ethernet packets anymore */
+-	__dev_remove_pack(&hba->fcoe_packet_type);
+-	__dev_remove_pack(&hba->fip_packet_type);
++	__dev_remove_pack(&interface->fcoe_packet_type);
++	__dev_remove_pack(&interface->fip_packet_type);
+ 	synchronize_net();
+ }
+ 
+-static void bnx2fc_if_destroy(struct fc_lport *lport)
++static void bnx2fc_if_destroy(struct fc_lport *lport, struct bnx2fc_hba *hba)
+ {
+ 	struct fcoe_port *port = lport_priv(lport);
+-	struct bnx2fc_hba *hba = port->priv;
++	struct bnx2fc_lport *blport, *tmp;
+ 
+-	BNX2FC_HBA_DBG(hba->ctlr.lp, "ENTERED bnx2fc_if_destroy\n");
+ 	/* Stop the transmit retry timer */
+ 	del_timer_sync(&port->timer);
+ 

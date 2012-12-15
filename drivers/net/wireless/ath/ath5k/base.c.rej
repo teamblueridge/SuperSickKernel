@@ -1,0 +1,202 @@
+--- drivers/net/wireless/ath/ath5k/base.c
++++ drivers/net/wireless/ath/ath5k/base.c
+@@ -1717,25 +1705,26 @@
+  * Setup the beacon frame for transmit.
+  */
+ static int
+-ath5k_beacon_setup(struct ath5k_softc *sc, struct ath5k_buf *bf)
++ath5k_beacon_setup(struct ath5k_hw *ah, struct ath5k_buf *bf)
+ {
+ 	struct sk_buff *skb = bf->skb;
+ 	struct	ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
+-	struct ath5k_hw *ah = sc->ah;
+ 	struct ath5k_desc *ds;
+ 	int ret = 0;
+ 	u8 antenna;
+ 	u32 flags;
+ 	const int padsize = 0;
+ 
+-	bf->skbaddr = dma_map_single(sc->dev, skb->data, skb->len,
++	bf->skbaddr = dma_map_single(ah->dev, skb->data, skb->len,
+ 			DMA_TO_DEVICE);
+-	ATH5K_DBG(sc, ATH5K_DEBUG_BEACON, "skb %p [data %p len %u] "
++	ATH5K_DBG(ah, ATH5K_DEBUG_BEACON, "skb %p [data %p len %u] "
+ 			"skbaddr %llx\n", skb, skb->data, skb->len,
+ 			(unsigned long long)bf->skbaddr);
+ 
+-	if (dma_mapping_error(sc->dev, bf->skbaddr)) {
+-		ATH5K_ERR(sc, "beacon DMA mapping failed\n");
++	if (dma_mapping_error(ah->dev, bf->skbaddr)) {
++		ATH5K_ERR(ah, "beacon DMA mapping failed\n");
++		dev_kfree_skb_any(skb);
++		bf->skb = NULL;
+ 		return -EIO;
+ 	}
+ 
+@@ -1817,11 +1806,9 @@
+ 		goto out;
+ 	}
+ 
+-	ath5k_txbuf_free_skb(sc, avf->bbuf);
++	ath5k_txbuf_free_skb(ah, avf->bbuf);
+ 	avf->bbuf->skb = skb;
+-	ret = ath5k_beacon_setup(sc, avf->bbuf);
+-	if (ret)
+-		avf->bbuf->skb = NULL;
++	ret = ath5k_beacon_setup(ah, avf->bbuf);
+ out:
+ 	return ret;
+ }
+@@ -1835,15 +1822,15 @@
+  * or user context from ath5k_beacon_config.
+  */
+ static void
+-ath5k_beacon_send(struct ath5k_softc *sc)
++ath5k_beacon_send(struct ath5k_hw *ah)
+ {
+-	struct ath5k_hw *ah = sc->ah;
+ 	struct ieee80211_vif *vif;
+ 	struct ath5k_vif *avf;
+ 	struct ath5k_buf *bf;
+ 	struct sk_buff *skb;
++	int err;
+ 
+-	ATH5K_DBG_UNLIMIT(sc, ATH5K_DEBUG_BEACON, "in beacon_send\n");
++	ATH5K_DBG_UNLIMIT(ah, ATH5K_DEBUG_BEACON, "in beacon_send\n");
+ 
+ 	/*
+ 	 * Check if the previous beacon has gone out.  If
+@@ -1852,85 +1839,93 @@
+ 	 * indicate a problem and should not occur.  If we
+ 	 * miss too many consecutive beacons reset the device.
+ 	 */
+-	if (unlikely(ath5k_hw_num_tx_pending(ah, sc->bhalq) != 0)) {
+-		sc->bmisscount++;
+-		ATH5K_DBG(sc, ATH5K_DEBUG_BEACON,
+-			"missed %u consecutive beacons\n", sc->bmisscount);
+-		if (sc->bmisscount > 10) {	/* NB: 10 is a guess */
+-			ATH5K_DBG(sc, ATH5K_DEBUG_BEACON,
++	if (unlikely(ath5k_hw_num_tx_pending(ah, ah->bhalq) != 0)) {
++		ah->bmisscount++;
++		ATH5K_DBG(ah, ATH5K_DEBUG_BEACON,
++			"missed %u consecutive beacons\n", ah->bmisscount);
++		if (ah->bmisscount > 10) {	/* NB: 10 is a guess */
++			ATH5K_DBG(ah, ATH5K_DEBUG_BEACON,
+ 				"stuck beacon time (%u missed)\n",
+-				sc->bmisscount);
+-			ATH5K_DBG(sc, ATH5K_DEBUG_RESET,
++				ah->bmisscount);
++			ATH5K_DBG(ah, ATH5K_DEBUG_RESET,
+ 				  "stuck beacon, resetting\n");
+-			ieee80211_queue_work(sc->hw, &sc->reset_work);
++			ieee80211_queue_work(ah->hw, &ah->reset_work);
+ 		}
+ 		return;
+ 	}
+-	if (unlikely(sc->bmisscount != 0)) {
+-		ATH5K_DBG(sc, ATH5K_DEBUG_BEACON,
++	if (unlikely(ah->bmisscount != 0)) {
++		ATH5K_DBG(ah, ATH5K_DEBUG_BEACON,
+ 			"resume beacon xmit after %u misses\n",
+-			sc->bmisscount);
+-		sc->bmisscount = 0;
++			ah->bmisscount);
++		ah->bmisscount = 0;
+ 	}
+ 
+-	if ((sc->opmode == NL80211_IFTYPE_AP && sc->num_ap_vifs > 1) ||
+-			sc->opmode == NL80211_IFTYPE_MESH_POINT) {
++	if ((ah->opmode == NL80211_IFTYPE_AP && ah->num_ap_vifs > 1) ||
++			ah->opmode == NL80211_IFTYPE_MESH_POINT) {
+ 		u64 tsf = ath5k_hw_get_tsf64(ah);
+ 		u32 tsftu = TSF_TO_TU(tsf);
+-		int slot = ((tsftu % sc->bintval) * ATH_BCBUF) / sc->bintval;
+-		vif = sc->bslot[(slot + 1) % ATH_BCBUF];
+-		ATH5K_DBG(sc, ATH5K_DEBUG_BEACON,
++		int slot = ((tsftu % ah->bintval) * ATH_BCBUF) / ah->bintval;
++		vif = ah->bslot[(slot + 1) % ATH_BCBUF];
++		ATH5K_DBG(ah, ATH5K_DEBUG_BEACON,
+ 			"tsf %llx tsftu %x intval %u slot %u vif %p\n",
+-			(unsigned long long)tsf, tsftu, sc->bintval, slot, vif);
++			(unsigned long long)tsf, tsftu, ah->bintval, slot, vif);
+ 	} else /* only one interface */
+-		vif = sc->bslot[0];
++		vif = ah->bslot[0];
+ 
+ 	if (!vif)
+ 		return;
+ 
+ 	avf = (void *)vif->drv_priv;
+ 	bf = avf->bbuf;
+-	if (unlikely(bf->skb == NULL || sc->opmode == NL80211_IFTYPE_STATION ||
+-			sc->opmode == NL80211_IFTYPE_MONITOR)) {
+-		ATH5K_WARN(sc, "bf=%p bf_skb=%p\n", bf, bf ? bf->skb : NULL);
+-		return;
+-	}
+ 
+ 	/*
+ 	 * Stop any current dma and put the new frame on the queue.
+ 	 * This should never fail since we check above that no frames
+ 	 * are still pending on the queue.
+ 	 */
+-	if (unlikely(ath5k_hw_stop_beacon_queue(ah, sc->bhalq))) {
+-		ATH5K_WARN(sc, "beacon queue %u didn't start/stop ?\n", sc->bhalq);
++	if (unlikely(ath5k_hw_stop_beacon_queue(ah, ah->bhalq))) {
++		ATH5K_WARN(ah, "beacon queue %u didn't start/stop ?\n", ah->bhalq);
+ 		/* NB: hw still stops DMA, so proceed */
+ 	}
+ 
+ 	/* refresh the beacon for AP or MESH mode */
+-	if (sc->opmode == NL80211_IFTYPE_AP ||
+-			sc->opmode == NL80211_IFTYPE_MESH_POINT)
+-		ath5k_beacon_update(sc->hw, vif);
++	if (ah->opmode == NL80211_IFTYPE_AP ||
++	    ah->opmode == NL80211_IFTYPE_MESH_POINT) {
++		err = ath5k_beacon_update(ah->hw, vif);
++		if (err)
++			return;
++	}
+ 
+-	trace_ath5k_tx(sc, bf->skb, &sc->txqs[sc->bhalq]);
++	if (unlikely(bf->skb == NULL || ah->opmode == NL80211_IFTYPE_STATION ||
++		     ah->opmode == NL80211_IFTYPE_MONITOR)) {
++		ATH5K_WARN(ah, "bf=%p bf_skb=%p\n", bf, bf->skb);
++		return;
++	}
+ 
+-	ath5k_hw_set_txdp(ah, sc->bhalq, bf->daddr);
+-	ath5k_hw_start_tx_dma(ah, sc->bhalq);
+-	ATH5K_DBG(sc, ATH5K_DEBUG_BEACON, "TXDP[%u] = %llx (%p)\n",
+-		sc->bhalq, (unsigned long long)bf->daddr, bf->desc);
++	trace_ath5k_tx(ah, bf->skb, &ah->txqs[ah->bhalq]);
+ 
+-	skb = ieee80211_get_buffered_bc(sc->hw, vif);
++	ath5k_hw_set_txdp(ah, ah->bhalq, bf->daddr);
++	ath5k_hw_start_tx_dma(ah, ah->bhalq);
++	ATH5K_DBG(ah, ATH5K_DEBUG_BEACON, "TXDP[%u] = %llx (%p)\n",
++		ah->bhalq, (unsigned long long)bf->daddr, bf->desc);
++
++	skb = ieee80211_get_buffered_bc(ah->hw, vif);
+ 	while (skb) {
+-		ath5k_tx_queue(sc->hw, skb, sc->cabq);
+-		skb = ieee80211_get_buffered_bc(sc->hw, vif);
++		ath5k_tx_queue(ah->hw, skb, ah->cabq);
++
++		if (ah->cabq->txq_len >= ah->cabq->txq_max)
++			break;
++
++		skb = ieee80211_get_buffered_bc(ah->hw, vif);
+ 	}
+ 
+-	sc->bsent++;
++	ah->bsent++;
+ }
+ 
+ /**
+  * ath5k_beacon_update_timers - update beacon timers
+  *
+- * @sc: struct ath5k_softc pointer we are operating on
++ * @ah: struct ath5k_hw pointer we are operating on
+  * @bc_tsf: the timestamp of the beacon. 0 to reset the TSF. -1 to perform a
+  *          beacon timer update based on the current HW TSF.
+  *

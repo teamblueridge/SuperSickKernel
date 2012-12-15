@@ -236,6 +236,16 @@
 
 
 /*
+ * Component probe and remove ordering levels for components with runtime
+ * dependencies.
+ */
+#define SND_SOC_COMP_ORDER_FIRST		-2
+#define SND_SOC_COMP_ORDER_EARLY		-1
+#define SND_SOC_COMP_ORDER_NORMAL		0
+#define SND_SOC_COMP_ORDER_LATE		1
+#define SND_SOC_COMP_ORDER_LAST		2
+
+/*
  * Bias levels
  *
  * @ON:      Bias is fully on for audio playback and capture operations.
@@ -247,10 +257,10 @@
  * @OFF:     Power Off. No restrictions on transition times.
  */
 enum snd_soc_bias_level {
-	SND_SOC_BIAS_OFF,
-	SND_SOC_BIAS_STANDBY,
-	SND_SOC_BIAS_PREPARE,
-	SND_SOC_BIAS_ON,
+	SND_SOC_BIAS_OFF = 0,
+	SND_SOC_BIAS_STANDBY = 1,
+	SND_SOC_BIAS_PREPARE = 2,
+	SND_SOC_BIAS_ON = 3,
 };
 
 struct snd_jack;
@@ -295,6 +305,11 @@ enum snd_soc_compress_type {
 enum snd_soc_pcm_subclass {
 	SND_SOC_MUTEX_FE	= 0,
 	SND_SOC_MUTEX_BE	= 1,
+};
+
+enum snd_soc_pcm_subclass {
+	SND_SOC_PCM_CLASS_PCM	= 0,
+	SND_SOC_PCM_CLASS_BE	= 1,
 };
 
 int snd_soc_codec_set_sysclk(struct snd_soc_codec *codec, int clk_id,
@@ -396,6 +411,8 @@ struct snd_kcontrol *snd_soc_cnew(const struct snd_kcontrol_new *_template,
 				  void *data, char *long_name,
 				  const char *prefix);
 int snd_soc_add_controls(struct snd_soc_codec *codec,
+	const struct snd_kcontrol_new *controls, int num_controls);
+int snd_soc_add_platform_controls(struct snd_soc_platform *platform,
 	const struct snd_kcontrol_new *controls, int num_controls);
 int snd_soc_add_platform_controls(struct snd_soc_platform *platform,
 	const struct snd_kcontrol_new *controls, int num_controls);
@@ -819,8 +836,10 @@ struct snd_soc_card {
 
 	/* callbacks */
 	int (*set_bias_level)(struct snd_soc_card *,
+			      struct snd_soc_dapm_context *dapm,
 			      enum snd_soc_bias_level level);
 	int (*set_bias_level_post)(struct snd_soc_card *,
+				   struct snd_soc_dapm_context *dapm,
 				   enum snd_soc_bias_level level);
 
 	long pmdown_time;

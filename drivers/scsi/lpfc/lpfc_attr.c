@@ -755,6 +755,47 @@ lpfc_issue_reset(struct device *dev, struct device_attribute *attr,
 }
 
 /**
+ * lpfc_sli4_pdev_status_reg_wait - Wait for pdev status register for readyness
+ * @phba: lpfc_hba pointer.
+ *
+ * Description:
+ * SLI4 interface type-2 device to wait on the sliport status register for
+ * the readyness after performing a firmware reset.
+ *
+ * Returns:
+ * zero for success
+ **/
+static int
+lpfc_sli4_pdev_status_reg_wait(struct lpfc_hba *phba)
+{
+	struct lpfc_register portstat_reg;
+	int i;
+
+
+	lpfc_readl(phba->sli4_hba.u.if_type2.STATUSregaddr,
+		   &portstat_reg.word0);
+
+	/* wait for the SLI port firmware ready after firmware reset */
+	for (i = 0; i < LPFC_FW_RESET_MAXIMUM_WAIT_10MS_CNT; i++) {
+		msleep(10);
+		lpfc_readl(phba->sli4_hba.u.if_type2.STATUSregaddr,
+			   &portstat_reg.word0);
+		if (!bf_get(lpfc_sliport_status_err, &portstat_reg))
+			continue;
+		if (!bf_get(lpfc_sliport_status_rn, &portstat_reg))
+			continue;
+		if (!bf_get(lpfc_sliport_status_rdy, &portstat_reg))
+			continue;
+		break;
+	}
+
+	if (i < LPFC_FW_RESET_MAXIMUM_WAIT_10MS_CNT)
+		return 0;
+	else
+		return -EIO;
+}
+
+/**
  * lpfc_sli4_pdev_reg_request - Request physical dev to perform a register acc
  * @phba: lpfc_hba pointer.
  *
@@ -769,6 +810,7 @@ static ssize_t
 lpfc_sli4_pdev_reg_request(struct lpfc_hba *phba, uint32_t opcode)
 {
 	struct completion online_compl;
+	struct pci_dev *pdev = phba->pcidev;
 	uint32_t reg_val;
 	int status = 0;
 	int rc;
@@ -781,6 +823,14 @@ lpfc_sli4_pdev_reg_request(struct lpfc_hba *phba, uint32_t opcode)
 	     LPFC_SLI_INTF_IF_TYPE_2))
 		return -EPERM;
 
+	if (!pdev->is_physfn)
+		return -EPERM;
+
+	/* Disable SR-IOV virtual functions if enabled */
+	if (phba->cfg_sriov_nr_virtfn) {
+		pci_disable_sriov(pdev);
+		phba->cfg_sriov_nr_virtfn = 0;
+	}
 	status = lpfc_do_offline(phba, LPFC_EVT_OFFLINE);
 
 	if (status != 0)
@@ -1297,6 +1347,10 @@ lpfc_poll_store(struct device *dev, struct device_attribute *attr,
 	if (phba->sli_rev == LPFC_SLI_REV4)
 		val = 0;
 
+	lpfc_printf_vlog(vport, KERN_ERR, LOG_INIT,
+		"3051 lpfc_poll changed from %d to %d\n",
+		phba->cfg_poll, val);
+
 	spin_lock_irq(&phba->hbalock);
 
 	old_val = phba->cfg_poll;
@@ -1507,6 +1561,9 @@ static int \
 lpfc_##attr##_init(struct lpfc_hba *phba, uint val) \
 { \
 	if (val >= minval && val <= maxval) {\
+		lpfc_printf_log(phba, KERN_ERR, LOG_INIT, \
+			"3052 lpfc_" #attr " changed from %d to %d\n", \
+			phba->cfg_##attr, val); \
 		phba->cfg_##attr = val;\
 		return 0;\
 	}\
@@ -1670,6 +1727,9 @@ static int \
 lpfc_##attr##_init(struct lpfc_vport *vport, uint val) \
 { \
 	if (val >= minval && val <= maxval) {\
+		lpfc_printf_vlog(vport, KERN_ERR, LOG_INIT, \
+			"3053 lpfc_" #attr " changed from %d to %d\n", \
+			vport->cfg_##attr, val); \
 		vport->cfg_##attr = val;\
 		return 0;\
 	}\
@@ -2138,6 +2198,9 @@ MODULE_PARM_DESC(lpfc_enable_npiv, "Enable NPIV functionality");
 lpfc_param_show(enable_npiv);
 lpfc_param_init(enable_npiv, 1, 0, 1);
 static DEVICE_ATTR(lpfc_enable_npiv, S_IRUGO, lpfc_enable_npiv_show, NULL);
+
+LPFC_ATTR_R(fcf_failover_policy, 1, 1, 2,
+	"FCF Fast failover=1 Priority failover=2");
 
 int lpfc_enable_rrq;
 module_param(lpfc_enable_rrq, int, S_IRUGO);
@@ -3070,6 +3133,9 @@ lpfc_link_speed_store(struct device *dev, struct device_attribute *attr,
 		if (nolip)
 			return strlen(buf);
 
+		lpfc_printf_vlog(vport, KERN_ERR, LOG_INIT,
+			"3054 lpfc_topology changed from %d to %d\n",
+			prev_val, val);
 		err = lpfc_issue_lip(lpfc_shost_from_vport(phba->pport));
 		if (err) {
 			phba->cfg_link_speed = prev_val;
@@ -3721,6 +3787,7 @@ struct device_attribute *lpfc_hba_attrs[] = {
 	&dev_attr_lpfc_fdmi_on,
 	&dev_attr_lpfc_max_luns,
 	&dev_attr_lpfc_enable_npiv,
+	&dev_attr_lpfc_fcf_failover_policy,
 	&dev_attr_lpfc_enable_rrq,
 	&dev_attr_nport_evt_cnt,
 	&dev_attr_board_mode,
@@ -4941,6 +5008,7 @@ lpfc_get_cfgparam(struct lpfc_hba *phba)
 	lpfc_link_speed_init(phba, lpfc_link_speed);
 	lpfc_poll_tmo_init(phba, lpfc_poll_tmo);
 	lpfc_enable_npiv_init(phba, lpfc_enable_npiv);
+	lpfc_fcf_failover_policy_init(phba, lpfc_fcf_failover_policy);
 	lpfc_enable_rrq_init(phba, lpfc_enable_rrq);
 	lpfc_use_msi_init(phba, lpfc_use_msi);
 	lpfc_fcp_imax_init(phba, lpfc_fcp_imax);

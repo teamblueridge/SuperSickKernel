@@ -267,6 +267,8 @@ struct rt_hash_bucket {
 #  define RT_HASH_LOCK_SZ	256
 # endif
 #endif
+#include <net/atmclip.h>
+#include <net/secure_seq.h>
 
 static spinlock_t	*rt_hash_locks;
 # define rt_hash_lock_addr(slot) &rt_hash_locks[(slot) & (RT_HASH_LOCK_SZ - 1)]
@@ -1107,6 +1109,37 @@ static int slow_chain_length(const struct rtable *head)
 	return length >> FRACT_BITS;
 }
 
+static struct neighbour *ipv4_neigh_lookup(const struct dst_entry *dst, const void *daddr)
+{
+	struct neigh_table *tbl = &arp_tbl;
+	static const __be32 inaddr_any = 0;
+	struct net_device *dev = dst->dev;
+	const __be32 *pkey = daddr;
+	struct neighbour *n;
+
+#if defined(CONFIG_ATM_CLIP) || defined(CONFIG_ATM_CLIP_MODULE)
+	if (dev->type == ARPHRD_ATM)
+		tbl = clip_tbl_hook;
+#endif
+	if (dev->flags & (IFF_LOOPBACK | IFF_POINTOPOINT))
+		pkey = &inaddr_any;
+
+	n = __ipv4_neigh_lookup(tbl, dev, *(__force u32 *)pkey);
+	if (n)
+		return n;
+	return neigh_create(tbl, pkey, dev);
+}
+
+static int rt_bind_neighbour(struct rtable *rt)
+{
+	struct neighbour *n = ipv4_neigh_lookup(&rt->dst, &rt->rt_gateway);
+	if (IS_ERR(n))
+		return PTR_ERR(n);
+	dst_set_neighbour(&rt->dst, n);
+
+	return 0;
+}
+
 static struct rtable *rt_intern_hash(unsigned hash, struct rtable *rt,
 				     struct sk_buff *skb, int ifindex)
 {
@@ -1143,7 +1176,7 @@ restart:
 
 		rt->dst.flags |= DST_NOCACHE;
 		if (rt->rt_type == RTN_UNICAST || rt_is_output_route(rt)) {
-			int err = arp_bind_neighbour(&rt->dst);
+			int err = rt_bind_neighbour(rt);
 			if (err) {
 				if (net_ratelimit())
 					printk(KERN_WARNING
@@ -1239,7 +1272,7 @@ restart:
 	   route or unicast forwarding path.
 	 */
 	if (rt->rt_type == RTN_UNICAST || rt_is_output_route(rt)) {
-		int err = arp_bind_neighbour(&rt->dst);
+		int err = rt_bind_neighbour(rt);
 		if (err) {
 			spin_unlock_bh(rt_hash_lock_addr(hash));
 
@@ -1604,20 +1637,20 @@ static int ip_error(struct sk_buff *skb)
 	int code;
 
 	switch (rt->dst.error) {
-		case EINVAL:
-		default:
-			goto out;
-		case EHOSTUNREACH:
-			code = ICMP_HOST_UNREACH;
-			break;
-		case ENETUNREACH:
-			code = ICMP_NET_UNREACH;
-			IP_INC_STATS_BH(dev_net(rt->dst.dev),
-					IPSTATS_MIB_INNOROUTES);
-			break;
-		case EACCES:
-			code = ICMP_PKT_FILTERED;
-			break;
+	case EINVAL:
+	default:
+		goto out;
+	case EHOSTUNREACH:
+		code = ICMP_HOST_UNREACH;
+		break;
+	case ENETUNREACH:
+		code = ICMP_NET_UNREACH;
+		IP_INC_STATS_BH(dev_net(rt->dst.dev),
+				IPSTATS_MIB_INNOROUTES);
+		break;
+	case EACCES:
+		code = ICMP_PKT_FILTERED;
+		break;
 	}
 
 	if (!rt->peer)
@@ -2862,6 +2895,7 @@ static struct dst_ops ipv4_dst_blackhole_ops = {
 	.default_advmss		=	ipv4_default_advmss,
 	.update_pmtu		=	ipv4_rt_blackhole_update_pmtu,
 	.cow_metrics		=	ipv4_rt_blackhole_cow_metrics,
+	.neigh_lookup		=	ipv4_neigh_lookup,
 };
 
 struct dst_entry *ipv4_blackhole_route(struct net *net, struct dst_entry *dst_orig)
@@ -3474,7 +3508,7 @@ int __init ip_rt_init(void)
 	xfrm_init();
 	xfrm4_init(ip_rt_max_size);
 #endif
-	rtnl_register(PF_INET, RTM_GETROUTE, inet_rtm_getroute, NULL);
+	rtnl_register(PF_INET, RTM_GETROUTE, inet_rtm_getroute, NULL, NULL);
 
 #ifdef CONFIG_SYSCTL
 	register_pernet_subsys(&sysctl_route_ops);

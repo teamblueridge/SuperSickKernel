@@ -1,0 +1,50 @@
+--- fs/btrfs/volumes.c
++++ fs/btrfs/volumes.c
+@@ -528,6 +548,7 @@
+ 		new_device->bdev = NULL;
+ 		new_device->writeable = 0;
+ 		new_device->in_fs_metadata = 0;
++		new_device->can_discard = 0;
+ 		list_replace_rcu(&device->dev_list, &new_device->dev_list);
+ 
+ 		call_rcu(&device->rcu, free_device);
+@@ -567,6 +588,7 @@
+ static int __btrfs_open_devices(struct btrfs_fs_devices *fs_devices,
+ 				fmode_t flags, void *holder)
+ {
++	struct request_queue *q;
+ 	struct block_device *bdev;
+ 	struct list_head *head = &fs_devices->devices;
+ 	struct btrfs_device *device;
+@@ -1647,6 +1685,9 @@
+ 
+ 	lock_chunks(root);
+ 
++	q = bdev_get_queue(bdev);
++	if (blk_queue_discard(q))
++		device->can_discard = 1;
+ 	device->writeable = 1;
+ 	device->work.func = pending_bios_fn;
+ 	generate_random_uuid(device->uuid);
+@@ -1682,6 +1723,8 @@
+ 	root->fs_info->fs_devices->num_devices++;
+ 	root->fs_info->fs_devices->open_devices++;
+ 	root->fs_info->fs_devices->rw_devices++;
++	if (device->can_discard)
++		root->fs_info->fs_devices->num_can_discard++;
+ 	root->fs_info->fs_devices->total_rw_bytes += device->total_bytes;
+ 
+ 	if (!blk_queue_nonrot(bdev_get_queue(bdev)))
+@@ -2097,8 +2140,10 @@
+ 
+ 	/* step two, relocate all the chunks */
+ 	path = btrfs_alloc_path();
+-	BUG_ON(!path);
+-
++	if (!path) {
++		ret = -ENOMEM;
++		goto error;
++	}
+ 	key.objectid = BTRFS_FIRST_CHUNK_TREE_OBJECTID;
+ 	key.offset = (u64)-1;
+ 	key.type = BTRFS_CHUNK_ITEM_KEY;

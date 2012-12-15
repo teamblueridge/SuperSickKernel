@@ -1,0 +1,11 @@
+--- net/bluetooth/rfcomm/sock.c
++++ net/bluetooth/rfcomm/sock.c
+@@ -789,8 +792,6 @@
+ 			break;
+ 		}
+ 
+-		l2cap_sk = rfcomm_pi(sk)->dlc->session->sock->sk;
+-
+ 		memset(&cinfo, 0, sizeof(cinfo));
+ 		cinfo.hci_handle = conn->hcon->handle;
+ 		memcpy(cinfo.dev_class, conn->hcon->dev_class, 3);

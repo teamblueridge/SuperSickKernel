@@ -1,7 +1,7 @@
 #ifndef __LINUX_DCACHE_H
 #define __LINUX_DCACHE_H
 
-#include <asm/atomic.h>
+#include <linux/atomic.h>
 #include <linux/list.h>
 #include <linux/rculist.h>
 #include <linux/rculist_bl.h>
@@ -180,12 +180,12 @@ struct dentry_operations {
  */
 
 /* d_flags entries */
-#define DCACHE_AUTOFS_PENDING 0x0001    /* autofs: "under construction" */
-#define DCACHE_NFSFS_RENAMED  0x0002
-     /* this dentry has been "silly renamed" and has to be deleted on the last
-      * dput() */
+#define DCACHE_OP_HASH		0x0001
+#define DCACHE_OP_COMPARE	0x0002
+#define DCACHE_OP_REVALIDATE	0x0004
+#define DCACHE_OP_DELETE	0x0008
 
-#define	DCACHE_DISCONNECTED	0x0004
+#define	DCACHE_DISCONNECTED	0x0010
      /* This dentry is possibly not currently connected to the dcache tree, in
       * which case its parent will either be itself, or will have this flag as
       * well.  nfsd will not use a dentry with this bit set, but will first
@@ -420,7 +420,12 @@ static inline bool d_mountpoint(struct dentry *dentry)
 	return dentry->d_flags & DCACHE_MOUNTED;
 }
 
-extern struct dentry *lookup_create(struct nameidata *nd, int is_dir);
+static inline bool d_need_lookup(struct dentry *dentry)
+{
+	return dentry->d_flags & DCACHE_NEED_LOOKUP;
+}
+
+extern void d_clear_need_lookup(struct dentry *dentry);
 
 extern int sysctl_vfs_cache_pressure;
 

@@ -330,6 +330,55 @@ void hci_le_ltk_neg_reply(struct hci_conn *conn)
 	hci_send_cmd(hdev, HCI_OP_LE_LTK_NEG_REPLY, sizeof(cp), &cp);
 }
 
+void hci_le_start_enc(struct hci_conn *conn, __le16 ediv, __u8 rand[8],
+							__u8 ltk[16])
+{
+	struct hci_dev *hdev = conn->hdev;
+	struct hci_cp_le_start_enc cp;
+
+	BT_DBG("%p", conn);
+
+	memset(&cp, 0, sizeof(cp));
+
+	cp.handle = cpu_to_le16(conn->handle);
+	memcpy(cp.ltk, ltk, sizeof(cp.ltk));
+	cp.ediv = ediv;
+	memcpy(cp.rand, rand, sizeof(rand));
+
+	hci_send_cmd(hdev, HCI_OP_LE_START_ENC, sizeof(cp), &cp);
+}
+EXPORT_SYMBOL(hci_le_start_enc);
+
+void hci_le_ltk_reply(struct hci_conn *conn, u8 ltk[16])
+{
+	struct hci_dev *hdev = conn->hdev;
+	struct hci_cp_le_ltk_reply cp;
+
+	BT_DBG("%p", conn);
+
+	memset(&cp, 0, sizeof(cp));
+
+	cp.handle = cpu_to_le16(conn->handle);
+	memcpy(cp.ltk, ltk, sizeof(ltk));
+
+	hci_send_cmd(hdev, HCI_OP_LE_LTK_REPLY, sizeof(cp), &cp);
+}
+EXPORT_SYMBOL(hci_le_ltk_reply);
+
+void hci_le_ltk_neg_reply(struct hci_conn *conn)
+{
+	struct hci_dev *hdev = conn->hdev;
+	struct hci_cp_le_ltk_neg_reply cp;
+
+	BT_DBG("%p", conn);
+
+	memset(&cp, 0, sizeof(cp));
+
+	cp.handle = cpu_to_le16(conn->handle);
+
+	hci_send_cmd(hdev, HCI_OP_LE_LTK_NEG_REPLY, sizeof(cp), &cp);
+}
+
 /* Device _must_ be locked */
 void hci_sco_setup(struct hci_conn *conn, __u8 status)
 {
@@ -859,6 +908,8 @@ static int hci_conn_auth(struct hci_conn *conn, __u8 sec_level, __u8 auth_type)
 		cp.handle = cpu_to_le16(conn->handle);
 		hci_send_cmd(conn->hdev, HCI_OP_AUTH_REQUESTED,
 							sizeof(cp), &cp);
+		if (conn->key_type != 0xff)
+			set_bit(HCI_CONN_REAUTH_PEND, &conn->pend);
 	}
 
 	return 0;

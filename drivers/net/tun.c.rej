@@ -1,0 +1,84 @@
+--- drivers/net/tun.c
++++ drivers/net/tun.c
+@@ -572,9 +571,9 @@
+ 
+ /* prepad is the amount to reserve at front.  len is length after that.
+  * linear is a hint as to how much to copy (usually headers). */
+-static struct sk_buff *tun_alloc_skb(struct tun_struct *tun,
+-				     size_t prepad, size_t len,
+-				     size_t linear, int noblock)
++static inline struct sk_buff *tun_alloc_skb(struct tun_struct *tun,
++					    size_t prepad, size_t len,
++					    size_t linear, int noblock)
+ {
+ 	struct sock *sk = tun->socket.sk;
+ 	struct sk_buff *skb;
+@@ -600,13 +599,13 @@
+ }
+ 
+ /* Get packet from user space buffer */
+-static ssize_t tun_get_user(struct tun_struct *tun,
+-			    const struct iovec *iv, size_t count,
+-			    int noblock)
++static __inline__ ssize_t tun_get_user(struct tun_struct *tun,
++				       const struct iovec *iv, size_t count,
++				       int noblock)
+ {
+ 	struct tun_pi pi = { 0, cpu_to_be16(ETH_P_IP) };
+ 	struct sk_buff *skb;
+-	size_t len = count, align = NET_SKB_PAD;
++	size_t len = count, align = 0;
+ 	struct virtio_net_hdr gso = { 0 };
+ 	int offset = 0;
+ 
+@@ -636,7 +635,7 @@
+ 	}
+ 
+ 	if ((tun->flags & TUN_TYPE_MASK) == TUN_TAP_DEV) {
+-		align += NET_IP_ALIGN;
++		align = NET_IP_ALIGN;
+ 		if (unlikely(len < ETH_HLEN ||
+ 			     (gso.hdr_len && gso.hdr_len < ETH_HLEN)))
+ 			return -EINVAL;
+@@ -751,9 +750,9 @@
+ }
+ 
+ /* Put packet to the user space buffer */
+-static ssize_t tun_put_user(struct tun_struct *tun,
+-			    struct sk_buff *skb,
+-			    const struct iovec *iv, int len)
++static __inline__ ssize_t tun_put_user(struct tun_struct *tun,
++				       struct sk_buff *skb,
++				       const struct iovec *iv, int len)
+ {
+ 	struct tun_pi pi = { 0, skb->protocol };
+ 	ssize_t total = 0;
+@@ -810,8 +809,6 @@
+ 			gso.flags = VIRTIO_NET_HDR_F_NEEDS_CSUM;
+ 			gso.csum_start = skb_checksum_start_offset(skb);
+ 			gso.csum_offset = skb->csum_offset;
+-		} else if (skb->ip_summed == CHECKSUM_UNNECESSARY) {
+-			gso.flags = VIRTIO_NET_HDR_F_DATA_VALID;
+ 		} /* else everything is zero */
+ 
+ 		if (unlikely(memcpy_toiovecend(iv, (void *)&gso, total,
+@@ -841,8 +838,7 @@
+ 
+ 	tun_debug(KERN_INFO, tun, "tun_chr_read\n");
+ 
+-	if (unlikely(!noblock))
+-		add_wait_queue(&tun->wq.wait, &wait);
++	add_wait_queue(&tun->wq.wait, &wait);
+ 	while (len) {
+ 		current->state = TASK_INTERRUPTIBLE;
+ 
+@@ -873,8 +869,7 @@
+ 	}
+ 
+ 	current->state = TASK_RUNNING;
+-	if (unlikely(!noblock))
+-		remove_wait_queue(&tun->wq.wait, &wait);
++	remove_wait_queue(&tun->wq.wait, &wait);
+ 
+ 	return ret;
+ }

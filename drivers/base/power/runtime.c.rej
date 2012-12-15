@@ -1,0 +1,11 @@
+--- drivers/base/power/runtime.c
++++ drivers/base/power/runtime.c
+@@ -395,7 +402,7 @@
+ 	retval = rpm_callback(callback, dev);
+ 	if (retval) {
+ 		__update_runtime_status(dev, RPM_ACTIVE);
+-		dev->power.deferred_resume = 0;
++		dev->power.deferred_resume = false;
+ 		if (retval == -EAGAIN || retval == -EBUSY)
+ 			dev->power.runtime_error = 0;
+ 		else

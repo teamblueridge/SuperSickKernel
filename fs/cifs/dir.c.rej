@@ -1,0 +1,22 @@
+--- fs/cifs/dir.c
++++ fs/cifs/dir.c
+@@ -105,8 +100,8 @@
+ 	}
+ 	rcu_read_unlock();
+ 	if (namelen != dfsplen || read_seqretry(&rename_lock, seq)) {
+-		cERROR(1, "did not end path lookup where expected namelen is %d",
+-			namelen);
++		cFYI(1, "did not end path lookup where expected. namelen=%d "
++			"dfsplen=%d", namelen, dfsplen);
+ 		/* presumably this is only possible if racing with a rename
+ 		of one of the parent directories  (we can not lock the dentries
+ 		above us to prevent this, but retrying should be harmless) */
+@@ -636,7 +631,7 @@
+ static int
+ cifs_d_revalidate(struct dentry *direntry, struct nameidata *nd)
+ {
+-	if (nd->flags & LOOKUP_RCU)
++	if (nd && (nd->flags & LOOKUP_RCU))
+ 		return -ECHILD;
+ 
+ 	if (direntry->d_inode) {

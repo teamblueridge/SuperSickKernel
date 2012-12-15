@@ -1,0 +1,11 @@
+--- arch/powerpc/sysdev/fsl_rio.c
++++ arch/powerpc/sysdev/fsl_rio.c
+@@ -1524,7 +1523,7 @@
+ 	port->priv = priv;
+ 	port->phys_efptr = 0x100;
+ 
+-	priv->regs_win = ioremap(regs.start, resource_size(&regs));
++	priv->regs_win = ioremap(regs.start, regs.end - regs.start + 1);
+ 	rio_regs_win = priv->regs_win;
+ 
+ 	/* Probe the master port phy type */

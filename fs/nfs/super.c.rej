@@ -1,0 +1,11 @@
+--- fs/nfs/super.c
++++ fs/nfs/super.c
+@@ -2798,7 +2803,7 @@
+ 		goto out_put_mnt_ns;
+ 
+ 	ret = vfs_path_lookup(root_mnt->mnt_root, root_mnt,
+-			export_path, LOOKUP_FOLLOW, nd);
++			export_path, LOOKUP_FOLLOW|LOOKUP_AUTOMOUNT, &path);
+ 
+ 	nfs_referral_loop_unprotect();
+ 	put_mnt_ns(ns_private);

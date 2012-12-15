@@ -1,0 +1,10 @@
+--- arch/arm/Kconfig
++++ arch/arm/Kconfig
+@@ -1741,6 +1803,7 @@
+ 	bool "Flattened Device Tree support"
+ 	select OF
+ 	select OF_EARLY_FLATTREE
++	select IRQ_DOMAIN
+ 	help
+ 	  Include support for flattened device tree machine descriptions.
+ 

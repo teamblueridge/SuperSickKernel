@@ -106,6 +106,16 @@ struct mmc_blk_data {
 
 static DEFINE_MUTEX(open_lock);
 
+enum mmc_blk_status {
+	MMC_BLK_SUCCESS = 0,
+	MMC_BLK_PARTIAL,
+	MMC_BLK_RETRY,
+	MMC_BLK_RETRY_SINGLE,
+	MMC_BLK_DATA_ERR,
+	MMC_BLK_CMD_ERR,
+	MMC_BLK_ABORT,
+};
+
 module_param(perdev_minors, int, 0444);
 MODULE_PARM_DESC(perdev_minors, "Minors numbers to allocate per device");
 
@@ -431,14 +441,6 @@ static const struct block_device_operations mmc_bdops = {
 #ifdef CONFIG_COMPAT
 	.compat_ioctl		= mmc_blk_compat_ioctl,
 #endif
-};
-
-struct mmc_blk_request {
-	struct mmc_request	mrq;
-	struct mmc_command	sbc;
-	struct mmc_command	cmd;
-	struct mmc_command	stop;
-	struct mmc_data		data;
 };
 
 static inline int mmc_blk_part_switch(struct mmc_card *card,

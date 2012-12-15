@@ -1,0 +1,84 @@
+--- drivers/net/sungem.c
++++ drivers/net/sungem.c
+@@ -2318,59 +2295,35 @@
+ {
+ 	struct net_device *dev = pci_get_drvdata(pdev);
+ 	struct gem *gp = netdev_priv(dev);
+-	unsigned long flags;
+ 
+-	mutex_lock(&gp->pm_mutex);
+-
+-	netdev_info(dev, "suspending, WakeOnLan %s\n",
+-		    (gp->wake_on_lan && gp->opened) ? "enabled" : "disabled");
+-
+-	/* Keep the cell enabled during the entire operation */
+-	spin_lock_irqsave(&gp->lock, flags);
+-	spin_lock(&gp->tx_lock);
+-	gem_get_cell(gp);
+-	spin_unlock(&gp->tx_lock);
+-	spin_unlock_irqrestore(&gp->lock, flags);
+-
+-	/* If the driver is opened, we stop the MAC */
+-	if (gp->opened) {
+-		napi_disable(&gp->napi);
++	/* Lock the network stack first to avoid racing with open/close,
++	 * reset task and setting calls
++	 */
++	rtnl_lock();
+ 
+-		/* Stop traffic, mark us closed */
++	/* Not running, mark ourselves non-present, no need for
++	 * a lock here
++	 */
++	if (!netif_running(dev)) {
+ 		netif_device_detach(dev);
++		rtnl_unlock();
++		return 0;
++	}
++	netdev_info(dev, "suspending, WakeOnLan %s\n",
++		    (gp->wake_on_lan && netif_running(dev)) ?
++		    "enabled" : "disabled");
+ 
+-		/* Switch off MAC, remember WOL setting */
+-		gp->asleep_wol = gp->wake_on_lan;
+-		gem_do_stop(dev, gp->asleep_wol);
+-	} else
+-		gp->asleep_wol = 0;
+-
+-	/* Mark us asleep */
+-	gp->asleep = 1;
+-	wmb();
+-
+-	/* Stop the link timer */
+-	del_timer_sync(&gp->link_timer);
+-
+-	/* Now we release the mutex to not block the reset task who
+-	 * can take it too. We are marked asleep, so there will be no
+-	 * conflict here
++	/* Tell the network stack we're gone. gem_do_stop() below will
++	 * synchronize with TX, stop NAPI etc...
+ 	 */
+-	mutex_unlock(&gp->pm_mutex);
++	netif_device_detach(dev);
+ 
+-	/* Wait for the pending reset task to complete */
+-	flush_work_sync(&gp->reset_task);
++	/* Switch off chip, remember WOL setting */
++	gp->asleep_wol = gp->wake_on_lan;
++	gem_do_stop(dev, gp->asleep_wol);
+ 
+-	/* Shut the PHY down eventually and setup WOL */
+-	gem_stop_phy(gp, gp->asleep_wol);
+-
+-	/* Make sure bus master is disabled */
+-	pci_disable_device(gp->pdev);
+-
+-	/* Release the cell, no need to take a lock at this point since
+-	 * nothing else can happen now
+-	 */
+-	gem_put_cell(gp);
++	/* Unlock the network stack */
++	rtnl_unlock();
+ 
+ 	return 0;
+ }

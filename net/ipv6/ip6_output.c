@@ -640,6 +640,31 @@ void ipv6_select_ident(struct frag_hdr *fhdr, struct in6_addr *addr)
 	fhdr->identification = htonl(__ipv6_select_ident(addr));
 }
 
+void ipv6_select_ident(struct frag_hdr *fhdr, struct rt6_info *rt)
+{
+	static atomic_t ipv6_fragmentation_id;
+	int old, new;
+
+	if (rt) {
+		struct inet_peer *peer;
+
+		if (!rt->rt6i_peer)
+			rt6_bind_peer(rt, 1);
+		peer = rt->rt6i_peer;
+		if (peer) {
+			fhdr->identification = htonl(inet_getid(peer, 0));
+			return;
+		}
+	}
+	do {
+		old = atomic_read(&ipv6_fragmentation_id);
+		new = old + 1;
+		if (!new)
+			new = 1;
+	} while (atomic_cmpxchg(&ipv6_fragmentation_id, old, new) != old);
+	fhdr->identification = htonl(new);
+}
+
 int ip6_fragment(struct sk_buff *skb, int (*output)(struct sk_buff *))
 {
 	struct sk_buff *frag;
@@ -803,6 +828,8 @@ slow_path_clean:
 			frag2->destructor = NULL;
 			skb->truesize += frag2->truesize;
 		}
+	} else {
+		rcu_read_unlock();
 	}
 
 slow_path:

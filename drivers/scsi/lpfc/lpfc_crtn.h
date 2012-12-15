@@ -235,9 +235,11 @@ int lpfc_sli4_redisc_fcf_table(struct lpfc_hba *);
 void lpfc_fcf_redisc_wait_start_timer(struct lpfc_hba *);
 void lpfc_sli4_fcf_dead_failthrough(struct lpfc_hba *);
 uint16_t lpfc_sli4_fcf_rr_next_index_get(struct lpfc_hba *);
+void lpfc_sli4_set_fcf_flogi_fail(struct lpfc_hba *, uint16_t);
 int lpfc_sli4_fcf_rr_index_set(struct lpfc_hba *, uint16_t);
 void lpfc_sli4_fcf_rr_index_clear(struct lpfc_hba *, uint16_t);
 int lpfc_sli4_fcf_rr_next_proc(struct lpfc_vport *, uint16_t);
+void lpfc_sli4_clear_fcf_rr_bmask(struct lpfc_hba *);
 
 int lpfc_mem_alloc(struct lpfc_hba *, int align);
 void lpfc_mem_free(struct lpfc_hba *);
@@ -371,6 +373,10 @@ extern struct lpfc_hbq_init *lpfc_hbq_defs[];
 /* SLI4 if_type 2 externs. */
 int lpfc_sli4_alloc_resource_identifiers(struct lpfc_hba *);
 int lpfc_sli4_dealloc_resource_identifiers(struct lpfc_hba *);
+int lpfc_sli4_get_allocated_extnts(struct lpfc_hba *, uint16_t,
+				   uint16_t *, uint16_t *);
+int lpfc_sli4_get_avail_extnt_rsrc(struct lpfc_hba *, uint16_t,
+					  uint16_t *, uint16_t *);
 
 /* externs BlockGuard */
 extern char *_dump_buf_data;

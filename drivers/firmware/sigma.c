@@ -11,7 +11,6 @@
 #include <linux/firmware.h>
 #include <linux/kernel.h>
 #include <linux/i2c.h>
-#include <linux/module.h>
 #include <linux/sigma.h>
 
 static size_t sigma_action_size(struct sigma_action *sa)
@@ -149,5 +148,3 @@ int process_sigma_firmware(struct i2c_client *client, const char *name)
 	return ret;
 }
 EXPORT_SYMBOL(process_sigma_firmware);
-
-MODULE_LICENSE("GPL");

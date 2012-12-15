@@ -1,0 +1,29 @@
+--- kernel/sys.c
++++ kernel/sys.c
+@@ -37,6 +36,8 @@
+ #include <linux/fs_struct.h>
+ #include <linux/gfp.h>
+ #include <linux/syscore_ops.h>
++#include <linux/version.h>
++#include <linux/ctype.h>
+ 
+ #include <linux/compat.h>
+ #include <linux/syscalls.h>
+@@ -44,6 +45,8 @@
+ #include <linux/user_namespace.h>
+ 
+ #include <linux/kmsg_dump.h>
++/* Move somewhere else to avoid recompiling? */
++#include <generated/utsrelease.h>
+ 
+ #include <asm/uaccess.h>
+ #include <asm/io.h>
+@@ -1198,6 +1267,8 @@
+ 		errno = -EFAULT;
+ 	up_read(&uts_sem);
+ 
++	if (!errno && override_release(name->release, sizeof(name->release)))
++		errno = -EFAULT;
+ 	if (!errno && override_architecture(name))
+ 		errno = -EFAULT;
+ 	return errno;

@@ -1,0 +1,48 @@
+--- drivers/net/wireless/rt2x00/rt2800usb.c
++++ drivers/net/wireless/rt2x00/rt2800usb.c
+@@ -566,8 +655,10 @@
+ 		while (!rt2x00queue_empty(queue)) {
+ 			entry = rt2x00queue_get_entry(queue, Q_INDEX_DONE);
+ 
+-			if (test_bit(ENTRY_OWNER_DEVICE_DATA, &entry->flags))
++			if (test_bit(ENTRY_OWNER_DEVICE_DATA, &entry->flags) ||
++			    !test_bit(ENTRY_DATA_STATUS_PENDING, &entry->flags))
+ 				break;
++
+ 			if (test_bit(ENTRY_DATA_IO_FAILED, &entry->flags))
+ 				rt2x00lib_txdone_noinfo(entry, TXDONE_FAILURE);
+ 			else if (rt2x00queue_status_timeout(entry))
+@@ -1031,6 +1125,7 @@
+ 	{ USB_DEVICE(0x0df6, 0x0048) },
+ 	{ USB_DEVICE(0x0df6, 0x0051) },
+ 	{ USB_DEVICE(0x0df6, 0x005f) },
++	{ USB_DEVICE(0x0df6, 0x0060) },
+ 	/* SMC */
+ 	{ USB_DEVICE(0x083a, 0x6618) },
+ 	{ USB_DEVICE(0x083a, 0x7511) },
+@@ -1063,6 +1158,8 @@
+ 	{ USB_DEVICE(0x0586, 0x341e) },
+ 	{ USB_DEVICE(0x0586, 0x343e) },
+ #ifdef CONFIG_RT2800USB_RT33XX
++	/* Belkin */
++	{ USB_DEVICE(0x050d, 0x945b) },
+ 	/* Ralink */
+ 	{ USB_DEVICE(0x148f, 0x3370) },
+ 	{ USB_DEVICE(0x148f, 0x8070) },
+@@ -1087,6 +1184,7 @@
+ 	{ USB_DEVICE(0x148f, 0x3572) },
+ 	/* Sitecom */
+ 	{ USB_DEVICE(0x0df6, 0x0041) },
++	{ USB_DEVICE(0x0df6, 0x0062) },
+ 	/* Toshiba */
+ 	{ USB_DEVICE(0x0930, 0x0a07) },
+ 	/* Zinwell */
+@@ -1185,8 +1283,6 @@
+ 	{ USB_DEVICE(0x0df6, 0x004a) },
+ 	{ USB_DEVICE(0x0df6, 0x004d) },
+ 	{ USB_DEVICE(0x0df6, 0x0053) },
+-	{ USB_DEVICE(0x0df6, 0x0060) },
+-	{ USB_DEVICE(0x0df6, 0x0062) },
+ 	/* SMC */
+ 	{ USB_DEVICE(0x083a, 0xa512) },
+ 	{ USB_DEVICE(0x083a, 0xc522) },

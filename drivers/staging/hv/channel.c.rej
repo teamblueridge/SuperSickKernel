@@ -1,0 +1,14 @@
+--- drivers/staging/hv/channel.c
++++ drivers/staging/hv/channel.c
+@@ -209,9 +208,9 @@
+ 			       sizeof(struct vmbus_channel_open_channel));
+ 
+ 	if (ret != 0)
+-		goto Cleanup;
++		goto cleanup;
+ 
+-	t = wait_for_completion_timeout(&openInfo->waitevent, HZ);
++	t = wait_for_completion_timeout(&openInfo->waitevent, 5*HZ);
+ 	if (t == 0) {
+ 		err = -ETIMEDOUT;
+ 		goto errorout;

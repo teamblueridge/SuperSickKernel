@@ -1,0 +1,264 @@
+--- drivers/mmc/core/core.c
++++ drivers/mmc/core/core.c
+@@ -23,6 +23,7 @@
+ #include <linux/log2.h>
+ #include <linux/regulator/consumer.h>
+ #include <linux/pm_runtime.h>
++#include <linux/suspend.h>
+ 
+ #include <linux/mmc/card.h>
+ #include <linux/mmc/host.h>
+@@ -132,7 +133,7 @@
+ 		if (mrq->done)
+ 			mrq->done(mrq);
+ 
+-		mmc_host_clk_gate(host);
++		mmc_host_clk_release(host);
+ 	}
+ }
+ 
+@@ -191,16 +192,116 @@
+ 			mrq->stop->mrq = mrq;
+ 		}
+ 	}
+-	mmc_host_clk_ungate(host);
++	mmc_host_clk_hold(host);
+ 	led_trigger_event(host->led, LED_FULL);
+ 	host->ops->request(host, mrq);
+ }
+ 
+ static void mmc_wait_done(struct mmc_request *mrq)
+ {
+-	complete(mrq->done_data);
++	complete(&mrq->completion);
+ }
+ 
++static void __mmc_start_req(struct mmc_host *host, struct mmc_request *mrq)
++{
++	init_completion(&mrq->completion);
++	mrq->done = mmc_wait_done;
++	mmc_start_request(host, mrq);
++}
++
++static void mmc_wait_for_req_done(struct mmc_host *host,
++				  struct mmc_request *mrq)
++{
++	wait_for_completion(&mrq->completion);
++}
++
++/**
++ *	mmc_pre_req - Prepare for a new request
++ *	@host: MMC host to prepare command
++ *	@mrq: MMC request to prepare for
++ *	@is_first_req: true if there is no previous started request
++ *                     that may run in parellel to this call, otherwise false
++ *
++ *	mmc_pre_req() is called in prior to mmc_start_req() to let
++ *	host prepare for the new request. Preparation of a request may be
++ *	performed while another request is running on the host.
++ */
++static void mmc_pre_req(struct mmc_host *host, struct mmc_request *mrq,
++		 bool is_first_req)
++{
++	if (host->ops->pre_req)
++		host->ops->pre_req(host, mrq, is_first_req);
++}
++
++/**
++ *	mmc_post_req - Post process a completed request
++ *	@host: MMC host to post process command
++ *	@mrq: MMC request to post process for
++ *	@err: Error, if non zero, clean up any resources made in pre_req
++ *
++ *	Let the host post process a completed request. Post processing of
++ *	a request may be performed while another reuqest is running.
++ */
++static void mmc_post_req(struct mmc_host *host, struct mmc_request *mrq,
++			 int err)
++{
++	if (host->ops->post_req)
++		host->ops->post_req(host, mrq, err);
++}
++
++/**
++ *	mmc_start_req - start a non-blocking request
++ *	@host: MMC host to start command
++ *	@areq: async request to start
++ *	@error: out parameter returns 0 for success, otherwise non zero
++ *
++ *	Start a new MMC custom command request for a host.
++ *	If there is on ongoing async request wait for completion
++ *	of that request and start the new one and return.
++ *	Does not wait for the new request to complete.
++ *
++ *      Returns the completed request, NULL in case of none completed.
++ *	Wait for the an ongoing request (previoulsy started) to complete and
++ *	return the completed request. If there is no ongoing request, NULL
++ *	is returned without waiting. NULL is not an error condition.
++ */
++struct mmc_async_req *mmc_start_req(struct mmc_host *host,
++				    struct mmc_async_req *areq, int *error)
++{
++	int err = 0;
++	struct mmc_async_req *data = host->areq;
++
++	/* Prepare a new request */
++	if (areq)
++		mmc_pre_req(host, areq->mrq, !host->areq);
++
++	if (host->areq) {
++		mmc_wait_for_req_done(host, host->areq->mrq);
++		err = host->areq->err_check(host->card, host->areq);
++		if (err) {
++			mmc_post_req(host, host->areq->mrq, 0);
++			if (areq)
++				mmc_post_req(host, areq->mrq, -EINVAL);
++
++			host->areq = NULL;
++			goto out;
++		}
++	}
++
++	if (areq)
++		__mmc_start_req(host, areq->mrq);
++
++	if (host->areq)
++		mmc_post_req(host, host->areq->mrq, 0);
++
++	host->areq = areq;
++ out:
++	if (error)
++		*error = err;
++	return data;
++}
++EXPORT_SYMBOL(mmc_start_req);
++
+ /**
+  *	mmc_wait_for_req - start a request and wait for completion
+  *	@host: MMC host to start command
+@@ -212,16 +313,9 @@
+  */
+ void mmc_wait_for_req(struct mmc_host *host, struct mmc_request *mrq)
+ {
+-	DECLARE_COMPLETION_ONSTACK(complete);
+-
+-	mrq->done_data = &complete;
+-	mrq->done = mmc_wait_done;
+-
+-	mmc_start_request(host, mrq);
+-
+-	wait_for_completion(&complete);
++	__mmc_start_req(host, mrq);
++	mmc_wait_for_req_done(host, mrq);
+ }
+-
+ EXPORT_SYMBOL(mmc_wait_for_req);
+ 
+ /**
+@@ -634,15 +728,17 @@
+  */
+ void mmc_set_chip_select(struct mmc_host *host, int mode)
+ {
++	mmc_host_clk_hold(host);
+ 	host->ios.chip_select = mode;
+ 	mmc_set_ios(host);
++	mmc_host_clk_release(host);
+ }
+ 
+ /*
+  * Sets the host clock to the highest possible frequency that
+  * is below "hz".
+  */
+-void mmc_set_clock(struct mmc_host *host, unsigned int hz)
++static void __mmc_set_clock(struct mmc_host *host, unsigned int hz)
+ {
+ 	WARN_ON(hz < host->f_min);
+ 
+@@ -692,7 +795,7 @@
+ 	if (host->clk_old) {
+ 		BUG_ON(host->ios.clock);
+ 		/* This call will also set host->clk_gated to false */
+-		mmc_set_clock(host, host->clk_old);
++		__mmc_set_clock(host, host->clk_old);
+ 	}
+ }
+ 
+@@ -720,8 +823,10 @@
+  */
+ void mmc_set_bus_mode(struct mmc_host *host, unsigned int mode)
+ {
++	mmc_host_clk_hold(host);
+ 	host->ios.bus_mode = mode;
+ 	mmc_set_ios(host);
++	mmc_host_clk_release(host);
+ }
+ 
+ /*
+@@ -729,8 +834,10 @@
+  */
+ void mmc_set_bus_width(struct mmc_host *host, unsigned int width)
+ {
++	mmc_host_clk_hold(host);
+ 	host->ios.bus_width = width;
+ 	mmc_set_ios(host);
++	mmc_host_clk_release(host);
+ }
+ 
+ /**
+@@ -928,8 +1035,10 @@
+ 
+ 		ocr &= 3 << bit;
+ 
++		mmc_host_clk_hold(host);
+ 		host->ios.vdd = bit;
+ 		mmc_set_ios(host);
++		mmc_host_clk_release(host);
+ 	} else {
+ 		pr_warning("%s: host doesn't support card's voltages\n",
+ 				mmc_hostname(host));
+@@ -976,8 +1085,10 @@
+  */
+ void mmc_set_timing(struct mmc_host *host, unsigned int timing)
+ {
++	mmc_host_clk_hold(host);
+ 	host->ios.timing = timing;
+ 	mmc_set_ios(host);
++	mmc_host_clk_release(host);
+ }
+ 
+ /*
+@@ -985,8 +1096,10 @@
+  */
+ void mmc_set_driver_type(struct mmc_host *host, unsigned int drv_type)
+ {
++	mmc_host_clk_hold(host);
+ 	host->ios.drv_type = drv_type;
+ 	mmc_set_ios(host);
++	mmc_host_clk_release(host);
+ }
+ 
+ /*
+@@ -1041,10 +1156,14 @@
+ 	 * time required to reach a stable voltage.
+ 	 */
+ 	mmc_delay(10);
++
++	mmc_host_clk_release(host);
+ }
+ 
+ static void mmc_power_off(struct mmc_host *host)
+ {
++	mmc_host_clk_hold(host);
++
+ 	host->ios.clock = 0;
+ 	host->ios.vdd = 0;
+ 
+@@ -1062,6 +1181,8 @@
+ 	host->ios.bus_width = MMC_BUS_WIDTH_1;
+ 	host->ios.timing = MMC_TIMING_LEGACY;
+ 	mmc_set_ios(host);
++
++	mmc_host_clk_release(host);
+ }
+ 
+ /*

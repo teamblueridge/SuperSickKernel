@@ -1661,6 +1661,7 @@ void r600_gpu_init(struct radeon_device *rdev)
 									       R6XX_MAX_BACKENDS_MASK) >> 16)),
 							(cc_rb_backend_disable >> 16));
 	rdev->config.r600.tile_config = tiling_config;
+	rdev->config.r600.backend_map = backend_map;
 	tiling_config |= BACKEND_MAP(backend_map);
 	WREG32(GB_TILING_CONFIG, tiling_config);
 	WREG32(DCP_TILING_CONFIG, tiling_config & 0xffff);
@@ -2995,10 +2996,6 @@ int r600_irq_init(struct radeon_device *rdev)
 	/* RPTR_REARM only works if msi's are enabled */
 	if (rdev->msi_enabled)
 		ih_cntl |= RPTR_REARM;
-
-#ifdef __BIG_ENDIAN
-	ih_cntl |= IH_MC_SWAP(IH_MC_SWAP_32BIT);
-#endif
 	WREG32(IH_CNTL, ih_cntl);
 
 	/* force the active interrupt state to all disabled */
@@ -3309,6 +3306,10 @@ int r600_irq_process(struct radeon_device *rdev)
 	if (!rdev->ih.enabled || rdev->shutdown)
 		return IRQ_NONE;
 
+	/* No MSIs, need a dummy read to flush PCI DMAs */
+	if (!rdev->msi_enabled)
+		RREG32(IH_RB_WPTR);
+
 	wptr = r600_get_ih_wptr(rdev);
 	rptr = rdev->ih.rptr;
 	DRM_DEBUG("r600_irq_process start: rptr %d, wptr %d\n", rptr, wptr);
@@ -3321,6 +3322,9 @@ int r600_irq_process(struct radeon_device *rdev)
 	}
 
 restart_ih:
+	/* Order reading of wptr vs. reading of IH ring data */
+	rmb();
+
 	/* display interrupts */
 	r600_irq_ack(rdev);
 

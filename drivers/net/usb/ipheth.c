@@ -108,6 +108,10 @@ static struct usb_device_id ipheth_table[] = {
 		USB_VENDOR_APPLE, USB_PRODUCT_IPHONE_4_VZW,
 		IPHETH_USBINTF_CLASS, IPHETH_USBINTF_SUBCLASS,
 		IPHETH_USBINTF_PROTO) },
+	{ USB_DEVICE_AND_INTERFACE_INFO(
+		USB_VENDOR_APPLE, USB_PRODUCT_IPHONE_4_VZW,
+		IPHETH_USBINTF_CLASS, IPHETH_USBINTF_SUBCLASS,
+		IPHETH_USBINTF_PROTO) },
 	{ }
 };
 MODULE_DEVICE_TABLE(usb, ipheth_table);
@@ -419,12 +423,6 @@ static void ipheth_tx_timeout(struct net_device *net)
 	usb_unlink_urb(dev->tx_urb);
 }
 
-static struct net_device_stats *ipheth_stats(struct net_device *net)
-{
-	struct ipheth_device *dev = netdev_priv(net);
-	return &dev->net->stats;
-}
-
 static u32 ipheth_ethtool_op_get_link(struct net_device *net)
 {
 	struct ipheth_device *dev = netdev_priv(net);
@@ -436,11 +434,10 @@ static struct ethtool_ops ops = {
 };
 
 static const struct net_device_ops ipheth_netdev_ops = {
-	.ndo_open = &ipheth_open,
-	.ndo_stop = &ipheth_close,
-	.ndo_start_xmit = &ipheth_tx,
-	.ndo_tx_timeout = &ipheth_tx_timeout,
-	.ndo_get_stats = &ipheth_stats,
+	.ndo_open = ipheth_open,
+	.ndo_stop = ipheth_close,
+	.ndo_start_xmit = ipheth_tx,
+	.ndo_tx_timeout = ipheth_tx_timeout,
 };
 
 static int ipheth_probe(struct usb_interface *intf,

@@ -1,0 +1,18 @@
+--- drivers/platform/x86/acer-wmi.c
++++ drivers/platform/x86/acer-wmi.c
+@@ -1286,8 +1306,13 @@
+ 	acpi_status status;
+ 
+ 	status = get_u32(&state, ACER_CAP_WIRELESS);
+-	if (ACPI_SUCCESS(status))
+-		rfkill_set_sw_state(wireless_rfkill, !state);
++	if (ACPI_SUCCESS(status)) {
++		if (quirks->wireless == 3) {
++			rfkill_set_hw_state(wireless_rfkill, !state);
++		} else {
++			rfkill_set_sw_state(wireless_rfkill, !state);
++		}
++	}
+ 
+ 	if (has_cap(ACER_CAP_BLUETOOTH)) {
+ 		status = get_u32(&state, ACER_CAP_BLUETOOTH);

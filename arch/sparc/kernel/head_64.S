@@ -400,6 +400,22 @@ sun4v_chip_type:
 90:	ldub	[%g7], %g2
 	ldub	[%g1], %g4
 	cmp	%g2, %g4
+	bne,pn	%icc, 89f
+	 add	%g7, 1, %g7
+	subcc	%g3, 1, %g3
+	bne,pt	%xcc, 90b
+	 add	%g1, 1, %g1
+	ba,pt	%xcc, 91f
+	 nop
+
+89:	sethi	%hi(prom_cpu_compatible), %g1
+	or	%g1, %lo(prom_cpu_compatible), %g1
+	sethi	%hi(prom_sparc_prefix), %g7
+	or	%g7, %lo(prom_sparc_prefix), %g7
+	mov	6, %g3
+90:	ldub	[%g7], %g2
+	ldub	[%g1], %g4
+	cmp	%g2, %g4
 	bne,pn	%icc, 4f
 	 add	%g7, 1, %g7
 	subcc	%g3, 1, %g3
@@ -412,6 +428,28 @@ sun4v_chip_type:
 	cmp	%g2, '3'
 	be,pt	%xcc, 5f
 	 mov	SUN4V_CHIP_NIAGARA3, %g4
+	ba,pt	%xcc, 4f
+	 nop
+
+91:	sethi	%hi(prom_cpu_compatible), %g1
+	or	%g1, %lo(prom_cpu_compatible), %g1
+	ldub	[%g1 + 6], %g2
+	cmp	%g2, 'T'
+	be,pt	%xcc, 70f
+	 cmp	%g2, 'M'
+	bne,pn	%xcc, 4f
+	 nop
+
+70:	ldub	[%g1 + 7], %g2
+	cmp	%g2, '3'
+	be,pt	%xcc, 5f
+	 mov	SUN4V_CHIP_NIAGARA3, %g4
+	cmp	%g2, '4'
+	be,pt	%xcc, 5f
+	 mov	SUN4V_CHIP_NIAGARA4, %g4
+	cmp	%g2, '5'
+	be,pt	%xcc, 5f
+	 mov	SUN4V_CHIP_NIAGARA5, %g4
 	ba,pt	%xcc, 4f
 	 nop
 
@@ -543,6 +581,15 @@ niagara_tlb_fixup:
 	be,pt	%xcc, niagara2_patch
 	 nop
 	cmp	%g1, SUN4V_CHIP_NIAGARA3
+	be,pt	%xcc, niagara2_patch
+	 nop
+	cmp	%g1, SUN4V_CHIP_NIAGARA3
+	be,pt	%xcc, niagara2_patch
+	 nop
+	cmp	%g1, SUN4V_CHIP_NIAGARA4
+	be,pt	%xcc, niagara2_patch
+	 nop
+	cmp	%g1, SUN4V_CHIP_NIAGARA5
 	be,pt	%xcc, niagara2_patch
 	 nop
 

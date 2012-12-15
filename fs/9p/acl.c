@@ -96,13 +96,9 @@ static struct posix_acl *v9fs_get_cached_acl(struct inode *inode, int type)
 	return acl;
 }
 
-int v9fs_check_acl(struct inode *inode, int mask, unsigned int flags)
+struct posix_acl *v9fs_iop_get_acl(struct inode *inode, int type)
 {
-	struct posix_acl *acl;
 	struct v9fs_session_info *v9ses;
-
-	if (flags & IPERM_FLAG_RCU)
-		return -ECHILD;
 
 	v9ses = v9fs_inode2v9ses(inode);
 	if (((v9ses->flags & V9FS_ACCESS_MASK) != V9FS_ACCESS_CLIENT) ||
@@ -111,18 +107,10 @@ int v9fs_check_acl(struct inode *inode, int mask, unsigned int flags)
 		 * On access = client  and acl = on mode get the acl
 		 * values from the server
 		 */
-		return 0;
+		return NULL;
 	}
-	acl = v9fs_get_cached_acl(inode, ACL_TYPE_ACCESS);
+	return v9fs_get_cached_acl(inode, type);
 
-	if (IS_ERR(acl))
-		return PTR_ERR(acl);
-	if (acl) {
-		int error = posix_acl_permission(inode, acl, mask);
-		posix_acl_release(acl);
-		return error;
-	}
-	return -EAGAIN;
 }
 
 static int v9fs_set_acl(struct dentry *dentry, int type, struct posix_acl *acl)
@@ -346,7 +334,7 @@ static int v9fs_xattr_set_acl(struct dentry *dentry, const char *name,
 	case ACL_TYPE_ACCESS:
 		name = POSIX_ACL_XATTR_ACCESS;
 		if (acl) {
-			mode_t mode = inode->i_mode;
+			umode_t mode = inode->i_mode;
 			retval = posix_acl_equiv_mode(acl, &mode);
 			if (retval < 0)
 				goto err_out;
