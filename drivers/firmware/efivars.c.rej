@@ -1,0 +1,114 @@
+--- drivers/firmware/efivars.c
++++ drivers/firmware/efivars.c
+@@ -148,38 +155,72 @@
+ 
+ /* Return the number of unicode characters in data */
+ static unsigned long
+-utf8_strlen(efi_char16_t *data, unsigned long maxlength)
++utf16_strnlen(efi_char16_t *s, size_t maxlength)
+ {
+ 	unsigned long length = 0;
+ 
+-	while (*data++ != 0 && length < maxlength)
++	while (*s++ != 0 && length < maxlength)
+ 		length++;
+ 	return length;
+ }
+ 
++static inline unsigned long
++utf16_strlen(efi_char16_t *s)
++{
++	return utf16_strnlen(s, ~0UL);
++}
++
+ /*
+  * Return the number of bytes is the length of this string
+  * Note: this is NOT the same as the number of unicode characters
+  */
+ static inline unsigned long
+-utf8_strsize(efi_char16_t *data, unsigned long maxlength)
++utf16_strsize(efi_char16_t *data, unsigned long maxlength)
+ {
+-	return utf8_strlen(data, maxlength/sizeof(efi_char16_t)) * sizeof(efi_char16_t);
++	return utf16_strnlen(data, maxlength/sizeof(efi_char16_t)) * sizeof(efi_char16_t);
++}
++
++static inline int
++utf16_strncmp(const efi_char16_t *a, const efi_char16_t *b, size_t len)
++{
++	while (1) {
++		if (len == 0)
++			return 0;
++		if (*a < *b)
++			return -1;
++		if (*a > *b)
++			return 1;
++		if (*a == 0) /* implies *b == 0 */
++			return 0;
++		a++;
++		b++;
++		len--;
++	}
+ }
+ 
+ static efi_status_t
+-get_var_data(struct efivars *efivars, struct efi_variable *var)
++get_var_data_locked(struct efivars *efivars, struct efi_variable *var)
+ {
+ 	efi_status_t status;
+ 
+-	spin_lock(&efivars->lock);
+ 	var->DataSize = 1024;
+ 	status = efivars->ops->get_variable(var->VariableName,
+ 					    &var->VendorGuid,
+ 					    &var->Attributes,
+ 					    &var->DataSize,
+ 					    var->Data);
++	return status;
++}
++
++static efi_status_t
++get_var_data(struct efivars *efivars, struct efi_variable *var)
++{
++	efi_status_t status;
++
++	spin_lock(&efivars->lock);
++	status = get_var_data_locked(efivars, var);
+ 	spin_unlock(&efivars->lock);
++
+ 	if (status != EFI_SUCCESS) {
+ 		printk(KERN_WARNING "efivars: get_variable() failed 0x%lx!\n",
+ 			status);
+@@ -589,8 +798,8 @@
+ 	 * Does this variable already exist?
+ 	 */
+ 	list_for_each_entry_safe(search_efivar, n, &efivars->list, list) {
+-		strsize1 = utf8_strsize(search_efivar->var.VariableName, 1024);
+-		strsize2 = utf8_strsize(new_var->VariableName, 1024);
++		strsize1 = utf16_strsize(search_efivar->var.VariableName, 1024);
++		strsize2 = utf16_strsize(new_var->VariableName, 1024);
+ 		if (strsize1 == strsize2 &&
+ 			!memcmp(&(search_efivar->var.VariableName),
+ 				new_var->VariableName, strsize1) &&
+@@ -622,8 +831,8 @@
+ 
+ 	/* Create the entry in sysfs.  Locking is not required here */
+ 	status = efivar_create_sysfs_entry(efivars,
+-					   utf8_strsize(new_var->VariableName,
+-							1024),
++					   utf16_strsize(new_var->VariableName,
++							 1024),
+ 					   new_var->VariableName,
+ 					   &new_var->VendorGuid);
+ 	if (status) {
+@@ -652,8 +861,8 @@
+ 	 * Does this variable already exist?
+ 	 */
+ 	list_for_each_entry_safe(search_efivar, n, &efivars->list, list) {
+-		strsize1 = utf8_strsize(search_efivar->var.VariableName, 1024);
+-		strsize2 = utf8_strsize(del_var->VariableName, 1024);
++		strsize1 = utf16_strsize(search_efivar->var.VariableName, 1024);
++		strsize2 = utf16_strsize(del_var->VariableName, 1024);
+ 		if (strsize1 == strsize2 &&
+ 			!memcmp(&(search_efivar->var.VariableName),
+ 				del_var->VariableName, strsize1) &&

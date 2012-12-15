@@ -1,0 +1,10 @@
+--- drivers/staging/rtl8192e/r8192E_core.c
++++ drivers/staging/rtl8192e/r8192E_core.c
+@@ -4532,6 +4532,7 @@
+ 	u8 unit = 0;
+ 	int ret = -ENODEV;
+ 	unsigned long pmem_start, pmem_len, pmem_flags;
++	u8 revisionid;
+ 
+ 	RT_TRACE(COMP_INIT,"Configuring chip resources\n");
+ 

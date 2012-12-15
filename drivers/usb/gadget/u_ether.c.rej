@@ -1,0 +1,13 @@
+--- drivers/usb/gadget/u_ether.c
++++ drivers/usb/gadget/u_ether.c
+@@ -695,8 +697,8 @@
+ 		usb_ep_disable(link->out_ep);
+ 		if (netif_carrier_ok(net)) {
+ 			DBG(dev, "host still using in/out endpoints\n");
+-			usb_ep_enable(link->in_ep, link->in);
+-			usb_ep_enable(link->out_ep, link->out);
++			usb_ep_enable(link->in_ep);
++			usb_ep_enable(link->out_ep);
+ 		}
+ 	}
+ 	spin_unlock_irqrestore(&dev->lock, flags);

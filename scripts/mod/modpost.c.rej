@@ -1,0 +1,16 @@
+--- scripts/mod/modpost.c
++++ scripts/mod/modpost.c
+@@ -563,12 +541,7 @@
+ 			       Elf_Sym *sym, const char *symname)
+ {
+ 	unsigned int crc;
+-	enum export export;
+-
+-	if (!is_vmlinux(mod->name) && strncmp(symname, "__ksymtab", 9) == 0)
+-		export = export_from_secname(info, get_secindex(info, sym));
+-	else
+-		export = export_from_sec(info, get_secindex(info, sym));
++	enum export export = export_from_sec(info, get_secindex(info, sym));
+ 
+ 	switch (sym->st_shndx) {
+ 	case SHN_COMMON:

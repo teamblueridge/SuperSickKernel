@@ -1,0 +1,12 @@
+--- drivers/gpu/drm/radeon/atom.c
++++ drivers/gpu/drm/radeon/atom.c
+@@ -1245,9 +1236,6 @@
+ 	char name[512];
+ 	int i;
+ 
+-	if (!ctx)
+-		return NULL;
+-
+ 	ctx->card = card;
+ 	ctx->bios = bios;
+ 

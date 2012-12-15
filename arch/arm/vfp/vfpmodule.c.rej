@@ -1,0 +1,34 @@
+--- arch/arm/vfp/vfpmodule.c
++++ arch/arm/vfp/vfpmodule.c
+@@ -454,7 +493,7 @@
+ 	}
+ 
+ 	/* clear any information we had about last context state */
+-	memset(last_VFP_context, 0, sizeof(last_VFP_context));
++	memset(vfp_current_hw_state, 0, sizeof(vfp_current_hw_state));
+ 
+ 	return 0;
+ }
+@@ -597,7 +612,6 @@
+ 				elf_hwcap |= HWCAP_VFPv3D16;
+ 		}
+ #endif
+-#ifdef CONFIG_NEON
+ 		/*
+ 		 * Check for the presence of the Advanced SIMD
+ 		 * load/store instructions, integer and single
+@@ -605,10 +619,13 @@
+ 		 * for NEON if the hardware has the MVFR registers.
+ 		 */
+ 		if ((read_cpuid_id() & 0x000f0000) == 0x000f0000) {
++#ifdef CONFIG_NEON
+ 			if ((fmrx(MVFR1) & 0x000fff00) == 0x00011100)
+ 				elf_hwcap |= HWCAP_NEON;
+-		}
+ #endif
++			if ((fmrx(MVFR1) & 0xf0000000) == 0x10000000)
++				elf_hwcap |= HWCAP_VFPv4;
++		}
+ 	}
+ 	return 0;
+ }

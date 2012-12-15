@@ -1,0 +1,34 @@
+--- drivers/staging/hv/netvsc.c
++++ drivers/staging/hv/netvsc.c
+@@ -556,6 +712,8 @@
+ 
+ 	/* Post the big receive buffer to NetVSP */
+ 	ret = netvsc_init_recv_buf(device);
++	if (ret == 0)
++		ret = netvsc_init_send_buf(device);
+ 
+ cleanup:
+ 	put_net_device(device);
+@@ -565,6 +723,7 @@
+ static void netvsc_disconnect_vsp(struct netvsc_device *net_device)
+ {
+ 	netvsc_destroy_recv_buf(net_device);
++	netvsc_destroy_send_buf(net_device);
+ }
+ 
+ /*
+@@ -695,10 +854,10 @@
+ 						  (unsigned long)packet);
+ 	} else {
+ 		ret = vmbus_sendpacket(device->channel, &sendMessage,
+-				sizeof(struct nvsp_message),
+-				(unsigned long)packet,
+-				VM_PKT_DATA_INBAND,
+-				VMBUS_DATA_PACKET_FLAG_COMPLETION_REQUESTED);
++				       sizeof(struct nvsp_message),
++				       (unsigned long)packet,
++				       VM_PKT_DATA_INBAND,
++				       VMBUS_DATA_PACKET_FLAG_COMPLETION_REQUESTED);
+ 
+ 	}
+ 

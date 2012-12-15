@@ -22,7 +22,6 @@
 #include <linux/bitops.h>
 #include <linux/perf_event.h>
 #include <linux/ratelimit.h>
-#include <linux/bitops.h>
 #include <asm/fpumacro.h>
 
 enum direction {
@@ -388,7 +387,10 @@ int handle_popc(u32 insn, struct pt_regs *regs)
 		maybe_flush_windows(0, insn & 0x1f, rd, from_kernel);
 		value = fetch_reg(insn & 0x1f, regs);
 	}
-	ret = hweight64(value);
+	for (ret = 0, i = 0; i < 16; i++) {
+		ret += popc_helper[value & 0xf];
+		value >>= 4;
+	}
 	if (rd < 16) {
 		if (rd)
 			regs->u_regs[rd] = ret;

@@ -1,0 +1,50 @@
+--- drivers/bluetooth/btusb.c
++++ drivers/bluetooth/btusb.c
+@@ -105,13 +98,12 @@
+ 	/* Atheros 3011 with sflash firmware */
+ 	{ USB_DEVICE(0x0cf3, 0x3002), .driver_info = BTUSB_IGNORE },
+ 	{ USB_DEVICE(0x13d3, 0x3304), .driver_info = BTUSB_IGNORE },
+-	{ USB_DEVICE(0x0930, 0x0215), .driver_info = BTUSB_IGNORE },
+ 
+ 	/* Atheros AR9285 Malbec with sflash firmware */
+ 	{ USB_DEVICE(0x03f0, 0x311d), .driver_info = BTUSB_IGNORE },
+ 
+ 	/* Atheros 3012 with sflash firmware */
+-	{ USB_DEVICE(0x0cf3, 0x3004), .driver_info = BTUSB_ATH3012 },
++	{ USB_DEVICE(0x0cf3, 0x3004), .driver_info = BTUSB_IGNORE },
+ 
+ 	/* Atheros AR5BBU12 with sflash firmware */
+ 	{ USB_DEVICE(0x0489, 0xe02c), .driver_info = BTUSB_IGNORE },
+@@ -256,9 +248,7 @@
+ 
+ 	err = usb_submit_urb(urb, GFP_ATOMIC);
+ 	if (err < 0) {
+-		/* -EPERM: urb is being killed;
+-		 * -ENODEV: device got disconnected */
+-		if (err != -EPERM && err != -ENODEV)
++		if (err != -EPERM)
+ 			BT_ERR("%s urb %p failed to resubmit (%d)",
+ 						hdev->name, urb, -err);
+ 		usb_unanchor_urb(urb);
+@@ -343,9 +333,7 @@
+ 
+ 	err = usb_submit_urb(urb, GFP_ATOMIC);
+ 	if (err < 0) {
+-		/* -EPERM: urb is being killed;
+-		 * -ENODEV: device got disconnected */
+-		if (err != -EPERM && err != -ENODEV)
++		if (err != -EPERM)
+ 			BT_ERR("%s urb %p failed to resubmit (%d)",
+ 						hdev->name, urb, -err);
+ 		usb_unanchor_urb(urb);
+@@ -435,9 +423,7 @@
+ 
+ 	err = usb_submit_urb(urb, GFP_ATOMIC);
+ 	if (err < 0) {
+-		/* -EPERM: urb is being killed;
+-		 * -ENODEV: device got disconnected */
+-		if (err != -EPERM && err != -ENODEV)
++		if (err != -EPERM)
+ 			BT_ERR("%s urb %p failed to resubmit (%d)",
+ 						hdev->name, urb, -err);
+ 		usb_unanchor_urb(urb);

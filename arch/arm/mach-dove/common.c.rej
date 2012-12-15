@@ -1,0 +1,11 @@
+--- arch/arm/mach-dove/common.c
++++ arch/arm/mach-dove/common.c
+@@ -158,7 +156,7 @@
+ 
+ void __init dove_spi1_init(void)
+ {
+-	orion_spi_init(DOVE_SPI1_PHYS_BASE, get_tclk());
++	orion_spi_1_init(DOVE_SPI1_PHYS_BASE, get_tclk());
+ }
+ 
+ /*****************************************************************************

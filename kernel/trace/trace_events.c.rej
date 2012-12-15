@@ -1,0 +1,129 @@
+--- kernel/trace/trace_events.c
++++ kernel/trace/trace_events.c
+@@ -548,7 +568,7 @@
+ 		   loff_t *ppos)
+ {
+ 	const char set_to_char[4] = { '?', '0', '1', 'X' };
+-	const char *system = filp->private_data;
++	struct event_subsystem *system = filp->private_data;
+ 	struct ftrace_event_call *call;
+ 	char buf[2];
+ 	int set = 0;
+@@ -559,7 +579,7 @@
+ 		if (!call->name || !call->class || !call->class->reg)
+ 			continue;
+ 
+-		if (system && strcmp(call->class->system, system) != 0)
++		if (system && strcmp(call->class->system, system->name) != 0)
+ 			continue;
+ 
+ 		/*
+@@ -589,21 +609,13 @@
+ system_enable_write(struct file *filp, const char __user *ubuf, size_t cnt,
+ 		    loff_t *ppos)
+ {
+-	const char *system = filp->private_data;
++	struct event_subsystem *system = filp->private_data;
++	const char *name = NULL;
+ 	unsigned long val;
+-	char buf[64];
+ 	ssize_t ret;
+ 
+-	if (cnt >= sizeof(buf))
+-		return -EINVAL;
+-
+-	if (copy_from_user(&buf, ubuf, cnt))
+-		return -EFAULT;
+-
+-	buf[cnt] = 0;
+-
+-	ret = strict_strtoul(buf, 10, &val);
+-	if (ret < 0)
++	ret = kstrtoul_from_user(ubuf, cnt, 10, &val);
++	if (ret)
+ 		return ret;
+ 
+ 	ret = tracing_update_buffers();
+@@ -613,7 +625,14 @@
+ 	if (val != 0 && val != 1)
+ 		return -EINVAL;
+ 
+-	ret = __ftrace_set_clr_event(NULL, system, NULL, val);
++	/*
++	 * Opening of "enable" adds a ref count to system,
++	 * so the name is safe to use.
++	 */
++	if (system)
++		name = system->name;
++
++	ret = __ftrace_set_clr_event(NULL, name, NULL, val);
+ 	if (ret)
+ 		goto out;
+ 
+@@ -1029,17 +1094,19 @@
+ };
+ 
+ static const struct file_operations ftrace_subsystem_filter_fops = {
+-	.open = tracing_open_generic,
++	.open = subsystem_open,
+ 	.read = subsystem_filter_read,
+ 	.write = subsystem_filter_write,
+ 	.llseek = default_llseek,
++	.release = subsystem_release,
+ };
+ 
+ static const struct file_operations ftrace_system_enable_fops = {
+-	.open = tracing_open_generic,
++	.open = subsystem_open,
+ 	.read = system_enable_read,
+ 	.write = system_enable_write,
+ 	.llseek = default_llseek,
++	.release = subsystem_release,
+ };
+ 
+ static const struct file_operations ftrace_show_header_fops = {
+@@ -1068,8 +1135,6 @@
+ 	return d_events;
+ }
+ 
+-static LIST_HEAD(event_subsystems);
+-
+ static struct dentry *
+ event_subsystem_dir(const char *name, struct dentry *d_events)
+ {
+@@ -1102,6 +1168,7 @@
+ 	}
+ 
+ 	system->nr_events = 1;
++	system->ref_count = 1;
+ 	system->name = kstrdup(name, GFP_KERNEL);
+ 	if (!system->name) {
+ 		debugfs_remove(system->entry);
+@@ -1129,8 +1196,7 @@
+ 			   "'%s/filter' entry\n", name);
+ 	}
+ 
+-	trace_create_file("enable", 0644, system->entry,
+-			  (void *)system->name,
++	trace_create_file("enable", 0644, system->entry, system,
+ 			  &ftrace_system_enable_fops);
+ 
+ 	return system->entry;
+@@ -1251,16 +1317,9 @@
+ 	list_for_each_entry(system, &event_subsystems, list) {
+ 		if (strcmp(system->name, name) == 0) {
+ 			if (!--system->nr_events) {
+-				struct event_filter *filter = system->filter;
+-
+ 				debugfs_remove_recursive(system->entry);
+ 				list_del(&system->list);
+-				if (filter) {
+-					kfree(filter->filter_string);
+-					kfree(filter);
+-				}
+-				kfree(system->name);
+-				kfree(system);
++				__put_system(system);
+ 			}
+ 			break;
+ 		}

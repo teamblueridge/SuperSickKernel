@@ -801,15 +801,14 @@ static noinline int add_inode_ref(struct btrfs_trans_handle *trans,
 				  struct extent_buffer *eb, int slot,
 				  struct btrfs_key *key)
 {
-	struct btrfs_inode_ref *ref;
-	struct btrfs_dir_item *di;
 	struct inode *dir;
+	int ret;
+	struct btrfs_inode_ref *ref;
 	struct inode *inode;
-	unsigned long ref_ptr;
-	unsigned long ref_end;
 	char *name;
 	int namelen;
-	int ret;
+	unsigned long ref_ptr;
+	unsigned long ref_end;
 	int search_done = 0;
 
 	/*
@@ -910,25 +909,6 @@ again:
 		 * coresponding ref, it does not need to check again.
 		 */
 		search_done = 1;
-	}
-	btrfs_release_path(path);
-
-	/* look for a conflicting sequence number */
-	di = btrfs_lookup_dir_index_item(trans, root, path, btrfs_ino(dir),
-					 btrfs_inode_ref_index(eb, ref),
-					 name, namelen, 0);
-	if (di && !IS_ERR(di)) {
-		ret = drop_one_dir_item(trans, root, path, dir, di);
-		BUG_ON(ret);
-	}
-	btrfs_release_path(path);
-
-	/* look for a conflicing name */
-	di = btrfs_lookup_dir_item(trans, root, path, btrfs_ino(dir),
-				   name, namelen, 0);
-	if (di && !IS_ERR(di)) {
-		ret = drop_one_dir_item(trans, root, path, dir, di);
-		BUG_ON(ret);
 	}
 	btrfs_release_path(path);
 
@@ -1857,8 +1837,7 @@ static int walk_log_tree(struct btrfs_trans_handle *trans,
 	int orig_level;
 
 	path = btrfs_alloc_path();
-	if (!path)
-		return -ENOMEM;
+	BUG_ON(!path);
 
 	level = btrfs_header_level(log->node);
 	orig_level = level;

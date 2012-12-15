@@ -49,7 +49,6 @@
 #include <asm/mach/time.h>
 #include <asm/traps.h>
 #include <asm/unwind.h>
-#include <mach/board_htc.h>
 
 #if defined(CONFIG_DEPRECATED_PARAM_STRUCT)
 #include "compat.h"
@@ -87,7 +86,6 @@ EXPORT_SYMBOL(cacheid);
 unsigned int __atags_pointer __initdata;
 
 unsigned int system_rev;
-unsigned int system_rev2;
 EXPORT_SYMBOL(system_rev);
 
 unsigned int system_serial_low;
@@ -99,8 +97,6 @@ EXPORT_SYMBOL(system_serial_high);
 unsigned int elf_hwcap __read_mostly;
 EXPORT_SYMBOL(elf_hwcap);
 
-unsigned int boot_reason;
-EXPORT_SYMBOL(boot_reason);
 
 #ifdef MULTI_CPU
 struct processor processor __read_mostly;
@@ -284,18 +280,19 @@ static void __init cacheid_init(void)
 	if (arch >= CPU_ARCH_ARMv6) {
 		if ((cachetype & (7 << 29)) == 4 << 29) {
 			/* ARMv7 register format */
+			arch = CPU_ARCH_ARMv7;
 			cacheid = CACHEID_VIPT_NONALIASING;
 			if ((cachetype & (3 << 14)) == 1 << 14)
 				cacheid |= CACHEID_ASID_TAGGED;
-			else if (cpu_has_aliasing_icache(CPU_ARCH_ARMv7))
-				cacheid |= CACHEID_VIPT_I_ALIASING;
-		} else if (cachetype & (1 << 23)) {
-			cacheid = CACHEID_VIPT_ALIASING;
 		} else {
-			cacheid = CACHEID_VIPT_NONALIASING;
-			if (cpu_has_aliasing_icache(CPU_ARCH_ARMv6))
-				cacheid |= CACHEID_VIPT_I_ALIASING;
+			arch = CPU_ARCH_ARMv6;
+			if (cachetype & (1 << 23))
+				cacheid = CACHEID_VIPT_ALIASING;
+			else
+				cacheid = CACHEID_VIPT_NONALIASING;
 		}
+		if (cpu_has_aliasing_icache(arch))
+			cacheid |= CACHEID_VIPT_I_ALIASING;
 	} else {
 		cacheid = CACHEID_VIVT;
 	}
@@ -347,6 +344,59 @@ static void __init feat_v6_fixup(void)
 		elf_hwcap &= ~HWCAP_TLS;
 }
 
+/*
+ * cpu_init - initialise one CPU.
+ *
+ * cpu_init sets up the per-CPU stacks.
+ */
+void cpu_init(void)
+{
+	unsigned int cpu = smp_processor_id();
+	struct stack *stk = &stacks[cpu];
+
+	if (cpu >= NR_CPUS) {
+		printk(KERN_CRIT "CPU%u: bad primary CPU number\n", cpu);
+		BUG();
+	}
+
+	cpu_proc_init();
+
+	/*
+	 * Define the placement constraint for the inline asm directive below.
+	 * In Thumb-2, msr with an immediate value is not allowed.
+	 */
+#ifdef CONFIG_THUMB2_KERNEL
+#define PLC	"r"
+#else
+#define PLC	"I"
+#endif
+
+	/*
+	 * setup stacks for re-entrant exception handlers
+	 */
+	__asm__ (
+	"msr	cpsr_c, %1\n\t"
+	"add	r14, %0, %2\n\t"
+	"mov	sp, r14\n\t"
+	"msr	cpsr_c, %3\n\t"
+	"add	r14, %0, %4\n\t"
+	"mov	sp, r14\n\t"
+	"msr	cpsr_c, %5\n\t"
+	"add	r14, %0, %6\n\t"
+	"mov	sp, r14\n\t"
+	"msr	cpsr_c, %7"
+	    :
+	    : "r" (stk),
+	      PLC (PSR_F_BIT | PSR_I_BIT | IRQ_MODE),
+	      "I" (offsetof(struct stack, irq[0])),
+	      PLC (PSR_F_BIT | PSR_I_BIT | ABT_MODE),
+	      "I" (offsetof(struct stack, abt[0])),
+	      PLC (PSR_F_BIT | PSR_I_BIT | UND_MODE),
+	      "I" (offsetof(struct stack, und[0])),
+	      PLC (PSR_F_BIT | PSR_I_BIT | SVC_MODE)
+	    : "r14");
+}
+
 static void __init setup_processor(void)
 {
 	struct proc_info_list *list;
@@ -392,58 +442,7 @@ static void __init setup_processor(void)
 	feat_v6_fixup();
 
 	cacheid_init();
-	cpu_proc_init();
-}
-
-/*
- * cpu_init - initialise one CPU.
- *
- * cpu_init sets up the per-CPU stacks.
- */
-void cpu_init(void)
-{
-	unsigned int cpu = smp_processor_id();
-	struct stack *stk = &stacks[cpu];
-
-	if (cpu >= NR_CPUS) {
-		printk(KERN_CRIT "CPU%u: bad primary CPU number\n", cpu);
-		BUG();
-	}
-
-	/*
-	 * Define the placement constraint for the inline asm directive below.
-	 * In Thumb-2, msr with an immediate value is not allowed.
-	 */
-#ifdef CONFIG_THUMB2_KERNEL
-#define PLC	"r"
-#else
-#define PLC	"I"
-#endif
-
-	/*
-	 * setup stacks for re-entrant exception handlers
-	 */
-	__asm__ (
-	"msr	cpsr_c, %1\n\t"
-	"add	r14, %0, %2\n\t"
-	"mov	sp, r14\n\t"
-	"msr	cpsr_c, %3\n\t"
-	"add	r14, %0, %4\n\t"
-	"mov	sp, r14\n\t"
-	"msr	cpsr_c, %5\n\t"
-	"add	r14, %0, %6\n\t"
-	"mov	sp, r14\n\t"
-	"msr	cpsr_c, %7"
-	    :
-	    : "r" (stk),
-	      PLC (PSR_F_BIT | PSR_I_BIT | IRQ_MODE),
-	      "I" (offsetof(struct stack, irq[0])),
-	      PLC (PSR_F_BIT | PSR_I_BIT | ABT_MODE),
-	      "I" (offsetof(struct stack, abt[0])),
-	      PLC (PSR_F_BIT | PSR_I_BIT | UND_MODE),
-	      "I" (offsetof(struct stack, und[0])),
-	      PLC (PSR_F_BIT | PSR_I_BIT | SVC_MODE)
-	    : "r14");
+	cpu_init();
 }
 
 void __init dump_machine_table(void)
@@ -659,13 +658,6 @@ __tagtable(ATAG_SERIAL, parse_tag_serialnr);
 static int __init parse_tag_revision(const struct tag *tag)
 {
 	system_rev = tag->u.revision.rev;
-	system_rev2 = system_rev;
-	if(tag->hdr.size > 3) {
-		system_rev = tag->u.revision.rev2;
-		system_rev2 = tag->u.revision.rev2;
-		if((tag->u.revision.rev >= 0x80))  /* get MFG revision for driver use. */
-			system_rev = tag->u.revision.rev;
-	}
 	return 0;
 }
 
@@ -912,9 +904,6 @@ void __init setup_arch(char **cmdline_p)
 
 	parse_early_param();
 
-	if (mdesc->init_very_early)
-		mdesc->init_very_early();
-
 	sanity_check_meminfo();
 	arm_memblock_init(&meminfo, mdesc);
 
@@ -929,9 +918,14 @@ void __init setup_arch(char **cmdline_p)
 #endif
 	reserve_crashkernel();
 
-	cpu_init();
 	tcm_init();
 
+#ifdef CONFIG_ZONE_DMA
+	if (mdesc->dma_zone_size) {
+		extern unsigned long arm_dma_zone_size;
+		arm_dma_zone_size = mdesc->dma_zone_size;
+	}
+#endif
 #ifdef CONFIG_MULTI_IRQ_HANDLER
 	handle_arch_irq = mdesc->handle_irq;
 #endif
@@ -1056,8 +1050,7 @@ static int c_show(struct seq_file *m, void *v)
 	seq_puts(m, "\n");
 
 	seq_printf(m, "Hardware\t: %s\n", machine_name);
-	seq_printf(m, "Revision\t: %04x\n", system_rev2);
-	seq_printf(m, "EngineerID\t: %04x\n", get_engineerid());
+	seq_printf(m, "Revision\t: %04x\n", system_rev);
 	seq_printf(m, "Serial\t\t: %08x%08x\n",
 		   system_serial_high, system_serial_low);
 

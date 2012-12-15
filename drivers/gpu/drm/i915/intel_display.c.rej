@@ -1,0 +1,59 @@
+--- drivers/gpu/drm/i915/intel_display.c
++++ drivers/gpu/drm/i915/intel_display.c
+@@ -2976,14 +3253,18 @@
+ 		I915_WRITE(PF_WIN_SZ(pipe), dev_priv->pch_pf_size);
+ 	}
+ 
++	/*
++	 * On ILK+ LUT must be loaded before the pipe is running but with
++	 * clocks enabled
++	 */
++	intel_crtc_load_lut(crtc);
++
+ 	intel_enable_pipe(dev_priv, pipe, is_pch_port);
+ 	intel_enable_plane(dev_priv, plane, pipe);
+ 
+ 	if (is_pch_port)
+ 		ironlake_pch_enable(crtc);
+ 
+-	intel_crtc_load_lut(crtc);
+-
+ 	mutex_lock(&dev->struct_mutex);
+ 	intel_update_fbc(dev);
+ 	mutex_unlock(&dev->struct_mutex);
+@@ -5390,7 +5818,7 @@
+ 	} else if (is_sdvo && is_tv)
+ 		factor = 20;
+ 
+-	if (clock.m1 < factor * clock.n)
++	if (clock.m < factor * clock.n)
+ 		fp |= FP_CB_TUNE;
+ 
+ 	dpll = 0;
+@@ -8429,8 +8923,10 @@
+ 		intel_init_emon(dev);
+ 	}
+ 
+-	if (IS_GEN6(dev))
++	if (IS_GEN6(dev) || IS_GEN7(dev)) {
+ 		gen6_enable_rps(dev_priv);
++		gen6_update_ring_freq(dev_priv);
++	}
+ 
+ 	INIT_WORK(&dev_priv->idle_work, intel_idle_update);
+ 	setup_timer(&dev_priv->idle_timer, intel_gpu_idle_timer,
+@@ -8466,12 +8962,11 @@
+ 		intel_increase_pllclock(crtc);
+ 	}
+ 
+-	if (dev_priv->display.disable_fbc)
+-		dev_priv->display.disable_fbc(dev);
++	intel_disable_fbc(dev);
+ 
+ 	if (IS_IRONLAKE_M(dev))
+ 		ironlake_disable_drps(dev);
+-	if (IS_GEN6(dev))
++	if (IS_GEN6(dev) || IS_GEN7(dev))
+ 		gen6_disable_rps(dev);
+ 
+ 	if (IS_IRONLAKE_M(dev))

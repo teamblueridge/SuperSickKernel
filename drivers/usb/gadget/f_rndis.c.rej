@@ -1,0 +1,67 @@
+--- drivers/usb/gadget/f_rndis.c
++++ drivers/usb/gadget/f_rndis.c
+@@ -76,23 +76,13 @@
+  *   - MS-Windows drivers sometimes emit undocumented requests.
+  */
+ 
+-struct rndis_ep_descs {
+-	struct usb_endpoint_descriptor	*in;
+-	struct usb_endpoint_descriptor	*out;
+-	struct usb_endpoint_descriptor	*notify;
+-};
+-
+ struct f_rndis {
+ 	struct gether			port;
+ 	u8				ctrl_id, data_id;
+ 	u8				ethaddr[ETH_ALEN];
+ 	int				config;
+ 
+-	struct rndis_ep_descs		fs;
+-	struct rndis_ep_descs		hs;
+-
+ 	struct usb_ep			*notify;
+-	struct usb_endpoint_descriptor	*notify_desc;
+ 	struct usb_request		*notify_req;
+ 	atomic_t			notify_count;
+ };
+@@ -561,13 +628,13 @@
+ 		if (rndis->notify->driver_data) {
+ 			VDBG(cdev, "reset rndis control %d\n", intf);
+ 			usb_ep_disable(rndis->notify);
+-		} else {
++		}
++		if (!rndis->notify->desc) {
+ 			VDBG(cdev, "init rndis ctrl %d\n", intf);
+-			rndis->notify_desc = ep_choose(cdev->gadget,
+-					rndis->hs.notify,
+-					rndis->fs.notify);
++			if (config_ep_by_speed(cdev->gadget, f, rndis->notify))
++				goto fail;
+ 		}
+-		usb_ep_enable(rndis->notify, rndis->notify_desc);
++		usb_ep_enable(rndis->notify);
+ 		rndis->notify->driver_data = rndis;
+ 
+ 	} else if (intf == rndis->data_id) {
+@@ -578,12 +645,16 @@
+ 			gether_disconnect(&rndis->port);
+ 		}
+ 
+-		if (!rndis->port.in) {
++		if (!rndis->port.in_ep->desc || !rndis->port.out_ep->desc) {
+ 			DBG(cdev, "init rndis\n");
+-			rndis->port.in = ep_choose(cdev->gadget,
+-					rndis->hs.in, rndis->fs.in);
+-			rndis->port.out = ep_choose(cdev->gadget,
+-					rndis->hs.out, rndis->fs.out);
++			if (config_ep_by_speed(cdev->gadget, f,
++					       rndis->port.in_ep) ||
++			    config_ep_by_speed(cdev->gadget, f,
++					       rndis->port.out_ep)) {
++				rndis->port.in_ep->desc = NULL;
++				rndis->port.out_ep->desc = NULL;
++				goto fail;
++			}
+ 		}
+ 
+ 		/* Avoid ZLPs; they can be troublesome. */

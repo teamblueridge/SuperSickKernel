@@ -1,0 +1,10 @@
+--- drivers/net/wireless/rt2x00/rt2x00usb.c
++++ drivers/net/wireless/rt2x00/rt2x00usb.c
+@@ -802,7 +805,6 @@
+ 	int retval;
+ 
+ 	usb_dev = usb_get_dev(usb_dev);
+-	usb_reset_device(usb_dev);
+ 
+ 	hw = ieee80211_alloc_hw(sizeof(struct rt2x00_dev), ops->hw);
+ 	if (!hw) {

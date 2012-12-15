@@ -1,0 +1,10 @@
+--- kernel/taskstats.c
++++ kernel/taskstats.c
+@@ -655,6 +653,7 @@
+ 	.cmd		= TASKSTATS_CMD_GET,
+ 	.doit		= taskstats_user_cmd,
+ 	.policy		= taskstats_cmd_get_policy,
++	.flags		= GENL_ADMIN_PERM,
+ };
+ 
+ static struct genl_ops cgroupstats_ops = {

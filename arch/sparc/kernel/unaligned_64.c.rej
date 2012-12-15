@@ -1,0 +1,69 @@
+--- arch/sparc/kernel/unaligned_64.c
++++ arch/sparc/kernel/unaligned_64.c
+@@ -317,7 +316,7 @@
+ 
+ 		addr = compute_effective_address(regs, insn,
+ 						 ((insn >> 25) & 0x1f));
+-		perf_sw_event(PERF_COUNT_SW_ALIGNMENT_FAULTS, 1, regs, addr);
++		perf_sw_event(PERF_COUNT_SW_ALIGNMENT_FAULTS, 1, 0, regs, addr);
+ 		switch (asi) {
+ 		case ASI_NL:
+ 		case ASI_AIUPL:
+@@ -373,13 +372,18 @@
+ 	}
+ }
+ 
++static char popc_helper[] = {
++0, 1, 1, 2, 1, 2, 2, 3,
++1, 2, 2, 3, 2, 3, 3, 4, 
++};
++
+ int handle_popc(u32 insn, struct pt_regs *regs)
+ {
++	u64 value;
++	int ret, i, rd = ((insn >> 25) & 0x1f);
+ 	int from_kernel = (regs->tstate & TSTATE_PRIV) != 0;
+-	int ret, rd = ((insn >> 25) & 0x1f);
+-	u64 value;
+ 	                        
+-	perf_sw_event(PERF_COUNT_SW_EMULATION_FAULTS, 1, regs, 0);
++	perf_sw_event(PERF_COUNT_SW_EMULATION_FAULTS, 1, 0, regs, 0);
+ 	if (insn & 0x2000) {
+ 		maybe_flush_windows(0, 0, rd, from_kernel);
+ 		value = sign_extend_imm13(insn);
+@@ -426,7 +433,7 @@
+ 	int asi = decode_asi(insn, regs);
+ 	int flag = (freg < 32) ? FPRS_DL : FPRS_DU;
+ 
+-	perf_sw_event(PERF_COUNT_SW_EMULATION_FAULTS, 1, regs, 0);
++	perf_sw_event(PERF_COUNT_SW_EMULATION_FAULTS, 1, 0, regs, 0);
+ 
+ 	save_and_clear_fpu();
+ 	current_thread_info()->xfsr[0] &= ~0x1c000;
+@@ -549,7 +556,7 @@
+ 	int from_kernel = (regs->tstate & TSTATE_PRIV) != 0;
+ 	unsigned long *reg;
+ 	                        
+-	perf_sw_event(PERF_COUNT_SW_EMULATION_FAULTS, 1, regs, 0);
++	perf_sw_event(PERF_COUNT_SW_EMULATION_FAULTS, 1, 0, regs, 0);
+ 
+ 	maybe_flush_windows(0, 0, rd, from_kernel);
+ 	reg = fetch_reg_addr(rd, regs);
+@@ -581,7 +588,7 @@
+ 
+ 	if (tstate & TSTATE_PRIV)
+ 		die_if_kernel("lddfmna from kernel", regs);
+-	perf_sw_event(PERF_COUNT_SW_ALIGNMENT_FAULTS, 1, regs, sfar);
++	perf_sw_event(PERF_COUNT_SW_ALIGNMENT_FAULTS, 1, 0, regs, sfar);
+ 	if (test_thread_flag(TIF_32BIT))
+ 		pc = (u32)pc;
+ 	if (get_user(insn, (u32 __user *) pc) != -EFAULT) {
+@@ -642,7 +649,7 @@
+ 
+ 	if (tstate & TSTATE_PRIV)
+ 		die_if_kernel("stdfmna from kernel", regs);
+-	perf_sw_event(PERF_COUNT_SW_ALIGNMENT_FAULTS, 1, regs, sfar);
++	perf_sw_event(PERF_COUNT_SW_ALIGNMENT_FAULTS, 1, 0, regs, sfar);
+ 	if (test_thread_flag(TIF_32BIT))
+ 		pc = (u32)pc;
+ 	if (get_user(insn, (u32 __user *) pc) != -EFAULT) {

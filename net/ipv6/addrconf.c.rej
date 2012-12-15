@@ -1,0 +1,20 @@
+--- net/ipv6/addrconf.c
++++ net/ipv6/addrconf.c
+@@ -656,7 +656,7 @@
+ 	 * layer address of our nexhop router
+ 	 */
+ 
+-	if (rt->rt6i_nexthop == NULL)
++	if (dst_get_neighbour_raw(&rt->dst) == NULL)
+ 		ifa->flags &= ~IFA_F_OPTIMISTIC;
+ 
+ 	ifa->idev = idev;
+@@ -1581,6 +1590,8 @@
+ 		return addrconf_ifid_infiniband(eui, dev);
+ 	case ARPHRD_SIT:
+ 		return addrconf_ifid_sit(eui, dev);
++	case ARPHRD_IPGRE:
++		return addrconf_ifid_gre(eui, dev);
+ 	}
+ 	return -1;
+ }

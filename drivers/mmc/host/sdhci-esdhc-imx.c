@@ -16,22 +16,23 @@
 #include <linux/err.h>
 #include <linux/clk.h>
 #include <linux/gpio.h>
+#include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/mmc/host.h>
-#include <linux/mmc/sdhci-pltfm.h>
 #include <linux/mmc/mmc.h>
 #include <linux/mmc/sdio.h>
-#include <mach/hardware.h>
+#include <linux/of.h>
+#include <linux/of_device.h>
+#include <linux/of_gpio.h>
 #include <mach/esdhc.h>
-#include "sdhci.h"
 #include "sdhci-pltfm.h"
 #include "sdhci-esdhc.h"
 
+#define	SDHCI_CTRL_D3CD			0x08
 /* VENDOR SPEC register */
 #define SDHCI_VENDOR_SPEC		0xC0
 #define  SDHCI_VENDOR_SPEC_SDIO_QUIRK	0x00000002
 
-#define ESDHC_FLAG_GPIO_FOR_CD_WP	(1 << 0)
 /*
  * The CMDTYPE of the CMD register (offset 0xE) should be set to
  * "11" when the STOP CMD12 is issued on imx53 to abort one
@@ -45,10 +46,67 @@
  */
 #define ESDHC_FLAG_MULTIBLK_NO_INT	(1 << 1)
 
+enum imx_esdhc_type {
+	IMX25_ESDHC,
+	IMX35_ESDHC,
+	IMX51_ESDHC,
+	IMX53_ESDHC,
+};
+
 struct pltfm_imx_data {
 	int flags;
 	u32 scratchpad;
+	enum imx_esdhc_type devtype;
+	struct esdhc_platform_data boarddata;
 };
+
+static struct platform_device_id imx_esdhc_devtype[] = {
+	{
+		.name = "sdhci-esdhc-imx25",
+		.driver_data = IMX25_ESDHC,
+	}, {
+		.name = "sdhci-esdhc-imx35",
+		.driver_data = IMX35_ESDHC,
+	}, {
+		.name = "sdhci-esdhc-imx51",
+		.driver_data = IMX51_ESDHC,
+	}, {
+		.name = "sdhci-esdhc-imx53",
+		.driver_data = IMX53_ESDHC,
+	}, {
+		/* sentinel */
+	}
+};
+MODULE_DEVICE_TABLE(platform, imx_esdhc_devtype);
+
+static const struct of_device_id imx_esdhc_dt_ids[] = {
+	{ .compatible = "fsl,imx25-esdhc", .data = &imx_esdhc_devtype[IMX25_ESDHC], },
+	{ .compatible = "fsl,imx35-esdhc", .data = &imx_esdhc_devtype[IMX35_ESDHC], },
+	{ .compatible = "fsl,imx51-esdhc", .data = &imx_esdhc_devtype[IMX51_ESDHC], },
+	{ .compatible = "fsl,imx53-esdhc", .data = &imx_esdhc_devtype[IMX53_ESDHC], },
+	{ /* sentinel */ }
+};
+MODULE_DEVICE_TABLE(of, imx_esdhc_dt_ids);
+
+static inline int is_imx25_esdhc(struct pltfm_imx_data *data)
+{
+	return data->devtype == IMX25_ESDHC;
+}
+
+static inline int is_imx35_esdhc(struct pltfm_imx_data *data)
+{
+	return data->devtype == IMX35_ESDHC;
+}
+
+static inline int is_imx51_esdhc(struct pltfm_imx_data *data)
+{
+	return data->devtype == IMX51_ESDHC;
+}
+
+static inline int is_imx53_esdhc(struct pltfm_imx_data *data)
+{
+	return data->devtype == IMX53_ESDHC;
+}
 
 static inline void esdhc_clrset_le(struct sdhci_host *host, u32 mask, u32 val, int reg)
 {
@@ -87,14 +145,33 @@ static void esdhc_writel_le(struct sdhci_host *host, u32 val, int reg)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct pltfm_imx_data *imx_data = pltfm_host->priv;
+	struct esdhc_platform_data *boarddata = &imx_data->boarddata;
+	u32 data;
 
-	if (unlikely((reg == SDHCI_INT_ENABLE || reg == SDHCI_SIGNAL_ENABLE)
-			&& (imx_data->flags & ESDHC_FLAG_GPIO_FOR_CD_WP)))
-		/*
-		 * these interrupts won't work with a custom card_detect gpio
-		 * (only applied to mx25/35)
-		 */
-		val &= ~(SDHCI_INT_CARD_REMOVE | SDHCI_INT_CARD_INSERT);
+	if (unlikely(reg == SDHCI_INT_ENABLE || reg == SDHCI_SIGNAL_ENABLE)) {
+		if (boarddata->cd_type == ESDHC_CD_GPIO)
+			/*
+			 * These interrupts won't work with a custom
+			 * card_detect gpio (only applied to mx25/35)
+			 */
+			val &= ~(SDHCI_INT_CARD_REMOVE | SDHCI_INT_CARD_INSERT);
+
+		if (val & SDHCI_INT_CARD_INT) {
+			/*
+			 * Clear and then set D3CD bit to avoid missing the
+			 * card interrupt.  This is a eSDHC controller problem
+			 * so we need to apply the following workaround: clear
+			 * and set D3CD bit will make eSDHC re-sample the card
+			 * interrupt. In case a card interrupt was lost,
+			 * re-sample it by the following steps.
+			 */
+			data = readl(host->ioaddr + SDHCI_HOST_CONTROL);
+			data &= ~SDHCI_CTRL_D3CD;
+			writel(data, host->ioaddr + SDHCI_HOST_CONTROL);
+			data |= SDHCI_CTRL_D3CD;
+			writel(data, host->ioaddr + SDHCI_HOST_CONTROL);
+		}
+	}
 
 	if (unlikely((imx_data->flags & ESDHC_FLAG_MULTIBLK_NO_INT)
 				&& (reg == SDHCI_INT_STATUS)
@@ -164,8 +241,10 @@ static void esdhc_writeb_le(struct sdhci_host *host, u8 val, int reg)
 		 */
 		return;
 	case SDHCI_HOST_CONTROL:
-		/* FSL messed up here, so we can just keep those two */
-		new_val = val & (SDHCI_CTRL_LED | SDHCI_CTRL_4BITBUS);
+		/* FSL messed up here, so we can just keep those three */
+		new_val = val & (SDHCI_CTRL_LED | \
+				SDHCI_CTRL_4BITBUS | \
+				SDHCI_CTRL_D3CD);
 		/* ensure the endianess */
 		new_val |= ESDHC_HOST_CONTROL_LE;
 		/* DMA mode bits are shifted */
@@ -175,6 +254,17 @@ static void esdhc_writeb_le(struct sdhci_host *host, u8 val, int reg)
 		return;
 	}
 	esdhc_clrset_le(host, 0xff, val, reg);
+
+	/*
+	 * The esdhc has a design violation to SDHC spec which tells
+	 * that software reset should not affect card detection circuit.
+	 * But esdhc clears its SYSCTL register bits [0..2] during the
+	 * software reset.  This will stop those clocks that card detection
+	 * circuit relies on.  To work around it, we turn the clocks on back
+	 * to keep card detection circuit functional.
+	 */
+	if ((reg == SDHCI_SOFTWARE_RESET) && (val & 1))
+		esdhc_clrset_le(host, 0x7, 0x7, ESDHC_SYSTEM_CONTROL);
 }
 
 static unsigned int esdhc_pltfm_get_max_clock(struct sdhci_host *host)
@@ -193,12 +283,22 @@ static unsigned int esdhc_pltfm_get_min_clock(struct sdhci_host *host)
 
 static unsigned int esdhc_pltfm_get_ro(struct sdhci_host *host)
 {
-	struct esdhc_platform_data *boarddata = host->mmc->parent->platform_data;
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	struct pltfm_imx_data *imx_data = pltfm_host->priv;
+	struct esdhc_platform_data *boarddata = &imx_data->boarddata;
 
-	if (boarddata && gpio_is_valid(boarddata->wp_gpio))
-		return gpio_get_value(boarddata->wp_gpio);
-	else
-		return -ENOSYS;
+	switch (boarddata->wp_type) {
+	case ESDHC_WP_GPIO:
+		if (gpio_is_valid(boarddata->wp_gpio))
+			return gpio_get_value(boarddata->wp_gpio);
+	case ESDHC_WP_CONTROLLER:
+		return !(readl(host->ioaddr + SDHCI_PRESENT_STATE) &
+			       SDHCI_WRITE_PROTECT);
+	case ESDHC_WP_NONE:
+		break;
+	}
+
+	return -ENOSYS;
 }
 
 static struct sdhci_ops sdhci_esdhc_ops = {
@@ -210,6 +310,14 @@ static struct sdhci_ops sdhci_esdhc_ops = {
 	.set_clock = esdhc_set_clock,
 	.get_max_clock = esdhc_pltfm_get_max_clock,
 	.get_min_clock = esdhc_pltfm_get_min_clock,
+	.get_ro = esdhc_pltfm_get_ro,
+};
+
+static struct sdhci_pltfm_data sdhci_esdhc_imx_pdata = {
+	.quirks = ESDHC_DEFAULT_QUIRKS | SDHCI_QUIRK_BROKEN_ADMA
+			| SDHCI_QUIRK_BROKEN_CARD_DETECTION,
+	/* ADMA has issues. Might be fixable */
+	.ops = &sdhci_esdhc_ops,
 };
 
 static irqreturn_t cd_irq(int irq, void *data)

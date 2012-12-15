@@ -1,0 +1,11 @@
+--- drivers/usb/gadget/composite.c
++++ drivers/usb/gadget/composite.c
+@@ -27,7 +27,7 @@
+ #include <linux/utsname.h>
+ 
+ #include <linux/usb/composite.h>
+-
++#include <asm/unaligned.h>
+ 
+ /*
+  * The code in this file is utility code, used to build a gadget driver

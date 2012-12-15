@@ -1,0 +1,11 @@
+--- sound/soc/codecs/wm8994.c
++++ sound/soc/codecs/wm8994.c
+@@ -2311,7 +2311,7 @@
+ 		rate_reg = WM8994_AIF1_RATE;
+ 		break;
+ 	case 2:
+-		rate_reg = WM8994_AIF2_RATE;
++		rate_reg = WM8994_AIF1_RATE;
+ 		break;
+ 	default:
+ 		break;

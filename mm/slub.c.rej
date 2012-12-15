@@ -1,0 +1,133 @@
+--- mm/slub.c
++++ mm/slub.c
+@@ -2071,72 +2328,97 @@
+ 	if (!page)
+ 		goto new_slab;
+ 
+-	slab_lock(page);
+-	if (unlikely(!node_match(c, node)))
+-		goto another_slab;
++	if (unlikely(!node_match(c, node))) {
++		stat(s, ALLOC_NODE_MISMATCH);
++		deactivate_slab(s, c);
++		goto new_slab;
++	}
++
++	stat(s, ALLOC_SLOWPATH);
++
++	do {
++		object = page->freelist;
++		counters = page->counters;
++		new.counters = counters;
++		VM_BUG_ON(!new.frozen);
++
++		/*
++		 * If there is no object left then we use this loop to
++		 * deactivate the slab which is simple since no objects
++		 * are left in the slab and therefore we do not need to
++		 * put the page back onto the partial list.
++		 *
++		 * If there are objects left then we retrieve them
++		 * and use them to refill the per cpu queue.
++		*/
++
++		new.inuse = page->objects;
++		new.frozen = object != NULL;
++
++	} while (!__cmpxchg_double_slab(s, page,
++			object, counters,
++			NULL, new.counters,
++			"__slab_alloc"));
++
++	if (unlikely(!object)) {
++		c->page = NULL;
++		stat(s, DEACTIVATE_BYPASS);
++		goto new_slab;
++	}
+ 
+ 	stat(s, ALLOC_REFILL);
+ 
+ load_freelist:
+-	object = page->freelist;
+-	if (unlikely(!object))
+-		goto another_slab;
+-	if (kmem_cache_debug(s))
+-		goto debug;
+-
++	VM_BUG_ON(!page->frozen);
+ 	c->freelist = get_freepointer(s, object);
+-	page->inuse = page->objects;
+-	page->freelist = NULL;
+-
+-	slab_unlock(page);
+ 	c->tid = next_tid(c->tid);
+ 	local_irq_restore(flags);
+-	stat(s, ALLOC_SLOWPATH);
+ 	return object;
+ 
+-another_slab:
+-	deactivate_slab(s, c);
+-
+ new_slab:
+ 	page = get_partial(s, gfpflags, node);
+ 	if (page) {
+ 		stat(s, ALLOC_FROM_PARTIAL);
+-		c->node = page_to_nid(page);
+-		c->page = page;
++		object = c->freelist;
++
++		if (kmem_cache_debug(s))
++			goto debug;
+ 		goto load_freelist;
+ 	}
+ 
+-	gfpflags &= gfp_allowed_mask;
+-	if (gfpflags & __GFP_WAIT)
+-		local_irq_enable();
+-
+ 	page = new_slab(s, gfpflags, node);
+ 
+-	if (gfpflags & __GFP_WAIT)
+-		local_irq_disable();
+-
+ 	if (page) {
+ 		c = __this_cpu_ptr(s->cpu_slab);
+-		stat(s, ALLOC_SLAB);
+ 		if (c->page)
+ 			flush_slab(s, c);
+ 
+-		slab_lock(page);
+-		__SetPageSlubFrozen(page);
++		/*
++		 * No other reference to the page yet so we can
++		 * muck around with it freely without cmpxchg
++		 */
++		object = page->freelist;
++		page->freelist = NULL;
++		page->inuse = page->objects;
++
++		stat(s, ALLOC_SLAB);
+ 		c->node = page_to_nid(page);
+ 		c->page = page;
++
++		if (kmem_cache_debug(s))
++			goto debug;
+ 		goto load_freelist;
+ 	}
+ 	if (!(gfpflags & __GFP_NOWARN) && printk_ratelimit())
+ 		slab_out_of_memory(s, gfpflags, node);
+ 	local_irq_restore(flags);
+ 	return NULL;
++
+ debug:
+-	if (!alloc_debug_processing(s, page, object, addr))
+-		goto another_slab;
++	if (!object || !alloc_debug_processing(s, page, object, addr))
++		goto new_slab;
+ 
+-	page->inuse++;
+-	page->freelist = get_freepointer(s, object);
++	c->freelist = get_freepointer(s, object);
+ 	deactivate_slab(s, c);
+ 	c->page = NULL;
+ 	c->node = NUMA_NO_NODE;

@@ -1,0 +1,15 @@
+--- drivers/net/wireless/iwlegacy/iwl-3945.c
++++ drivers/net/wireless/iwlegacy/iwl-3945.c
+@@ -1746,7 +1745,11 @@
+ 		}
+ 
+ 		memcpy(active_rxon, staging_rxon, sizeof(*active_rxon));
+-
++		/*
++		 * We do not commit tx power settings while channel changing,
++		 * do it now if tx power changed.
++		 */
++		iwl_legacy_set_tx_power(priv, priv->tx_power_next, false);
+ 		return 0;
+ 	}
+ 

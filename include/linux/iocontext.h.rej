@@ -1,0 +1,17 @@
+--- include/linux/iocontext.h
++++ include/linux/iocontext.h
+@@ -5,6 +5,14 @@
+ #include <linux/rcupdate.h>
+ 
+ struct cfq_queue;
++struct cfq_ttime {
++	unsigned long last_end_request;
++
++	unsigned long ttime_total;
++	unsigned long ttime_samples;
++	unsigned long ttime_mean;
++};
++
+ struct cfq_io_context {
+ 	void *key;
+ 

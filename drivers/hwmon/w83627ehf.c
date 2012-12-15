@@ -390,7 +390,7 @@ temp_from_reg(u16 reg, s16 regval)
 {
 	if (is_word_sized(reg))
 		return LM75_TEMP_FROM_REG(regval);
-	return ((s8)regval) * 1000;
+	return regval * 1000;
 }
 
 static inline u16
@@ -398,8 +398,7 @@ temp_to_reg(u16 reg, long temp)
 {
 	if (is_word_sized(reg))
 		return LM75_TEMP_TO_REG(temp);
-	return (s8)DIV_ROUND_CLOSEST(SENSORS_LIMIT(temp, -127000, 128000),
-				     1000);
+	return DIV_ROUND_CLOSEST(SENSORS_LIMIT(temp, -127000, 128000), 1000);
 }
 
 /* Some of analog inputs have internal scaling (2x), 8mV is ADC LSB */
@@ -1717,8 +1716,7 @@ static void w83627ehf_device_remove_files(struct device *dev)
 }
 
 /* Get the monitoring functions started */
-static inline void __devinit w83627ehf_init_device(struct w83627ehf_data *data,
-						   enum kinds kind)
+static inline void __devinit w83627ehf_init_device(struct w83627ehf_data *data)
 {
 	int i;
 	u8 tmp, diode;
@@ -1757,17 +1755,7 @@ static inline void __devinit w83627ehf_init_device(struct w83627ehf_data *data,
 		diode = 0x70;
 	}
 	for (i = 0; i < 3; i++) {
-		const char *label = NULL;
-
-		if (data->temp_label)
-			label = data->temp_label[data->temp_src[i]];
-
-		/* Digital source overrides analog type */
-		if (label && strncmp(label, "PECI", 4) == 0)
-			data->temp_type[i] = 6;
-		else if (label && strncmp(label, "AMD", 3) == 0)
-			data->temp_type[i] = 5;
-		else if ((tmp & (0x02 << i)))
+		if ((tmp & (0x02 << i)))
 			data->temp_type[i] = (diode & (0x10 << i)) ? 1 : 3;
 		else
 			data->temp_type[i] = 4; /* thermistor */
@@ -2037,7 +2025,7 @@ static int __devinit w83627ehf_probe(struct platform_device *pdev)
 	}
 
 	/* Initialize the chip */
-	w83627ehf_init_device(data, sio_data->kind);
+	w83627ehf_init_device(data);
 
 	data->vrm = vid_which_vrm();
 	superio_enter(sio_data->sioreg);

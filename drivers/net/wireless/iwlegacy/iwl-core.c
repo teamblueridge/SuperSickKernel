@@ -1707,41 +1707,14 @@ iwl_legacy_update_stats(struct iwl_priv *priv, bool is_tx, __le16 fc, u16 len)
 EXPORT_SYMBOL(iwl_legacy_update_stats);
 #endif
 
-static void _iwl_legacy_force_rf_reset(struct iwl_priv *priv)
-{
-	if (test_bit(STATUS_EXIT_PENDING, &priv->status))
-		return;
-
-	if (!iwl_legacy_is_any_associated(priv)) {
-		IWL_DEBUG_SCAN(priv, "force reset rejected: not associated\n");
-		return;
-	}
-	/*
-	 * There is no easy and better way to force reset the radio,
-	 * the only known method is switching channel which will force to
-	 * reset and tune the radio.
-	 * Use internal short scan (single channel) operation to should
-	 * achieve this objective.
-	 * Driver should reset the radio when number of consecutive missed
-	 * beacon, or any other uCode error condition detected.
-	 */
-	IWL_DEBUG_INFO(priv, "perform radio reset.\n");
-	iwl_legacy_internal_short_hw_scan(priv);
-}
-
-
-int iwl_legacy_force_reset(struct iwl_priv *priv, int mode, bool external)
+int iwl_legacy_force_reset(struct iwl_priv *priv, bool external)
 {
 	struct iwl_force_reset *force_reset;
 
 	if (test_bit(STATUS_EXIT_PENDING, &priv->status))
 		return -EINVAL;
 
-	if (mode >= IWL_MAX_FORCE_RESET) {
-		IWL_DEBUG_INFO(priv, "invalid reset request.\n");
-		return -EINVAL;
-	}
-	force_reset = &priv->force_reset[mode];
+	force_reset = &priv->force_reset;
 	force_reset->reset_request_count++;
 	if (!external) {
 		if (force_reset->last_force_reset_jiffies &&
@@ -1879,7 +1852,7 @@ static int iwl_legacy_check_stuck_queue(struct iwl_priv *priv, int cnt)
 	if (time_after(jiffies, timeout)) {
 		IWL_ERR(priv, "Queue %d stuck for %u ms.\n",
 				q->id, priv->cfg->base_params->wd_timeout);
-		ret = iwl_legacy_force_reset(priv, IWL_FW_RESET, false);
+		ret = iwl_legacy_force_reset(priv, false);
 		return (ret == -EAGAIN) ? 0 : 1;
 	}
 

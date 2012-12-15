@@ -266,12 +266,6 @@
 	.get = snd_soc_dapm_get_enum_virt, \
 	.put = snd_soc_dapm_put_enum_virt, \
 	.private_value = (unsigned long)&xenum }
-#define SOC_DAPM_ENUM_EXT(xname, xenum, xget, xput) \
-{	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = xname, \
-	.info = snd_soc_info_enum_double, \
-	.get = xget, \
-	.put = xput, \
-	.private_value = (unsigned long)&xenum }
 #define SOC_DAPM_VALUE_ENUM(xname, xenum) \
 {	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = xname, \
 	.info = snd_soc_info_enum_double, \
@@ -469,7 +463,6 @@ struct snd_soc_dapm_widget {
 	char *name;		/* widget name */
 	char *sname;	/* stream name */
 	struct snd_soc_codec *codec;
-	struct snd_soc_platform *platform;
 	struct list_head list;
 	struct snd_soc_dapm_context *dapm;
 

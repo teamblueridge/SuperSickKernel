@@ -60,20 +60,18 @@ void radeon_connector_hotplug(struct drm_connector *connector)
 
 	radeon_hpd_set_polarity(rdev, radeon_connector->hpd.hpd);
 
-	/* if the connector is already off, don't turn it back on */
-	if (connector->dpms != DRM_MODE_DPMS_ON)
+	/* powering up/down the eDP panel generates hpd events which
+	 * can interfere with modesetting.
+	 */
+	if (connector->connector_type == DRM_MODE_CONNECTOR_eDP)
 		return;
 
-	/* just deal with DP (not eDP) here. */
-	if (connector->connector_type == DRM_MODE_CONNECTOR_DisplayPort) {
-		int saved_dpms = connector->dpms;
-
-		/* Only turn off the display it it's physically disconnected */
-		if (!radeon_hpd_sense(rdev, radeon_connector->hpd.hpd))
-			drm_helper_connector_dpms(connector, DRM_MODE_DPMS_OFF);
-		else if (radeon_dp_needs_link_train(radeon_connector))
+	/* pre-r600 did not always have the hpd pins mapped accurately to connectors */
+	if (rdev->family >= CHIP_R600) {
+		if (radeon_hpd_sense(rdev, radeon_connector->hpd.hpd))
 			drm_helper_connector_dpms(connector, DRM_MODE_DPMS_ON);
-		connector->dpms = saved_dpms;
+		else
+			drm_helper_connector_dpms(connector, DRM_MODE_DPMS_OFF);
 	}
 }
 
@@ -712,10 +710,8 @@ radeon_vga_detect(struct drm_connector *connector, bool force)
 		ret = connector_status_disconnected;
 
 	if (radeon_connector->ddc_bus)
-		dret = radeon_ddc_probe(radeon_connector,
-					radeon_connector->requires_extended_probe);
+		dret = radeon_ddc_probe(radeon_connector);
 	if (dret) {
-		radeon_connector->detected_by_load = false;
 		if (radeon_connector->edid) {
 			kfree(radeon_connector->edid);
 			radeon_connector->edid = NULL;
@@ -742,21 +738,12 @@ radeon_vga_detect(struct drm_connector *connector, bool force)
 	} else {
 
 		/* if we aren't forcing don't do destructive polling */
-		if (!force) {
-			/* only return the previous status if we last
-			 * detected a monitor via load.
-			 */
-			if (radeon_connector->detected_by_load)
-				return connector->status;
-			else
-				return ret;
-		}
+		if (!force)
+			return connector->status;
 
 		if (radeon_connector->dac_load_detect && encoder) {
 			encoder_funcs = encoder->helper_private;
 			ret = encoder_funcs->detect(encoder, connector);
-			if (ret != connector_status_disconnected)
-				radeon_connector->detected_by_load = true;
 		}
 	}
 
@@ -895,10 +882,8 @@ radeon_dvi_detect(struct drm_connector *connector, bool force)
 	bool dret = false;
 
 	if (radeon_connector->ddc_bus)
-		dret = radeon_ddc_probe(radeon_connector,
-					radeon_connector->requires_extended_probe);
+		dret = radeon_ddc_probe(radeon_connector);
 	if (dret) {
-		radeon_connector->detected_by_load = false;
 		if (radeon_connector->edid) {
 			kfree(radeon_connector->edid);
 			radeon_connector->edid = NULL;
@@ -961,18 +946,8 @@ radeon_dvi_detect(struct drm_connector *connector, bool force)
 	if ((ret == connector_status_connected) && (radeon_connector->use_digital == true))
 		goto out;
 
-	/* DVI-D and HDMI-A are digital only */
-	if ((connector->connector_type == DRM_MODE_CONNECTOR_DVID) ||
-	    (connector->connector_type == DRM_MODE_CONNECTOR_HDMIA))
-		goto out;
-
-	/* if we aren't forcing don't do destructive polling */
 	if (!force) {
-		/* only return the previous status if we last
-		 * detected a monitor via load.
-		 */
-		if (radeon_connector->detected_by_load)
-			ret = connector->status;
+		ret = connector->status;
 		goto out;
 	}
 
@@ -1001,8 +976,6 @@ radeon_dvi_detect(struct drm_connector *connector, bool force)
 					if (ret == connector_status_connected) {
 						radeon_connector->use_digital = false;
 					}
-					if (ret != connector_status_disconnected)
-						radeon_connector->detected_by_load = true;
 				}
 				break;
 			}
@@ -1487,9 +1460,6 @@ radeon_add_atom_connector(struct drm_device *dev,
 	radeon_connector->shared_ddc = shared_ddc;
 	radeon_connector->connector_object_id = connector_object_id;
 	radeon_connector->hpd = *hpd;
-	radeon_connector->requires_extended_probe =
-		radeon_connector_needs_extended_probe(rdev, supported_device,
-							connector_type);
 	radeon_connector->router = *router;
 	if (router->ddc_valid || router->cd_valid) {
 		radeon_connector->router_bus = radeon_i2c_lookup(rdev, &router->i2c_info);
@@ -1836,9 +1806,6 @@ radeon_add_legacy_connector(struct drm_device *dev,
 	radeon_connector->devices = supported_device;
 	radeon_connector->connector_object_id = connector_object_id;
 	radeon_connector->hpd = *hpd;
-	radeon_connector->requires_extended_probe =
-		radeon_connector_needs_extended_probe(rdev, supported_device,
-							connector_type);
 	switch (connector_type) {
 	case DRM_MODE_CONNECTOR_VGA:
 		drm_connector_init(dev, &radeon_connector->base, &radeon_vga_connector_funcs, connector_type);

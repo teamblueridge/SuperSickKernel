@@ -1,0 +1,41 @@
+--- security/tomoyo/mount.c
++++ security/tomoyo/mount.c
+@@ -197,31 +191,31 @@
+ 	if ((flags & MS_MGC_MSK) == MS_MGC_VAL)
+ 		flags &= ~MS_MGC_MSK;
+ 	if (flags & MS_REMOUNT) {
+-		type = TOMOYO_MOUNT_REMOUNT_KEYWORD;
++		type = tomoyo_mounts[TOMOYO_MOUNT_REMOUNT];
+ 		flags &= ~MS_REMOUNT;
+ 	}
+ 	if (flags & MS_MOVE) {
+-		type = TOMOYO_MOUNT_MOVE_KEYWORD;
++		type = tomoyo_mounts[TOMOYO_MOUNT_MOVE];
+ 		flags &= ~MS_MOVE;
+ 	}
+ 	if (flags & MS_BIND) {
+-		type = TOMOYO_MOUNT_BIND_KEYWORD;
++		type = tomoyo_mounts[TOMOYO_MOUNT_BIND];
+ 		flags &= ~MS_BIND;
+ 	}
+ 	if (flags & MS_UNBINDABLE) {
+-		type = TOMOYO_MOUNT_MAKE_UNBINDABLE_KEYWORD;
++		type = tomoyo_mounts[TOMOYO_MOUNT_MAKE_UNBINDABLE];
+ 		flags &= ~MS_UNBINDABLE;
+ 	}
+ 	if (flags & MS_PRIVATE) {
+-		type = TOMOYO_MOUNT_MAKE_PRIVATE_KEYWORD;
++		type = tomoyo_mounts[TOMOYO_MOUNT_MAKE_PRIVATE];
+ 		flags &= ~MS_PRIVATE;
+ 	}
+ 	if (flags & MS_SLAVE) {
+-		type = TOMOYO_MOUNT_MAKE_SLAVE_KEYWORD;
++		type = tomoyo_mounts[TOMOYO_MOUNT_MAKE_SLAVE];
+ 		flags &= ~MS_SLAVE;
+ 	}
+ 	if (flags & MS_SHARED) {
+-		type = TOMOYO_MOUNT_MAKE_SHARED_KEYWORD;
++		type = tomoyo_mounts[TOMOYO_MOUNT_MAKE_SHARED];
+ 		flags &= ~MS_SHARED;
+ 	}
+ 	if (!type)

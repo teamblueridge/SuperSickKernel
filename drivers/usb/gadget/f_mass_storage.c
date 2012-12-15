@@ -3003,18 +3003,6 @@ static int get_next_command(struct fsg_common *common)
 
 /*-------------------------------------------------------------------------*/
 
-static int enable_endpoint(struct fsg_common *common, struct usb_ep *ep,
-		const struct usb_endpoint_descriptor *d)
-{
-	int	rc;
-
-	ep->driver_data = common;
-	rc = usb_ep_enable(ep, d);
-	if (rc)
-		ERROR(common, "can't enable %s, result %d\n", ep->name, rc);
-	return rc;
-}
-
 static int alloc_request(struct fsg_common *common, struct usb_ep *ep,
 		struct usb_request **preq)
 {

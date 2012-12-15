@@ -1,0 +1,54 @@
+--- fs/btrfs/tree-log.c
++++ fs/btrfs/tree-log.c
+@@ -1723,17 +1702,15 @@
+ 			return -ENOMEM;
+ 
+ 		if (*level == 1) {
+-			ret = wc->process_func(root, next, wc, ptr_gen);
+-			if (ret)
+-				return ret;
++			wc->process_func(root, next, wc, ptr_gen);
+ 
+ 			path->slots[*level]++;
+ 			if (wc->free) {
+ 				btrfs_read_buffer(next, ptr_gen);
+ 
+ 				btrfs_tree_lock(next);
++				clean_tree_block(trans, root, next);
+ 				btrfs_set_lock_blocking(next);
+-				clean_tree_block(trans, root, next);
+ 				btrfs_wait_tree_block_writeback(next);
+ 				btrfs_tree_unlock(next);
+ 
+@@ -1790,19 +1767,16 @@
+ 				parent = path->nodes[*level + 1];
+ 
+ 			root_owner = btrfs_header_owner(parent);
+-			ret = wc->process_func(root, path->nodes[*level], wc,
++			wc->process_func(root, path->nodes[*level], wc,
+ 				 btrfs_header_generation(path->nodes[*level]));
+-			if (ret)
+-				return ret;
+-
+ 			if (wc->free) {
+ 				struct extent_buffer *next;
+ 
+ 				next = path->nodes[*level];
+ 
+ 				btrfs_tree_lock(next);
++				clean_tree_block(trans, root, next);
+ 				btrfs_set_lock_blocking(next);
+-				clean_tree_block(trans, root, next);
+ 				btrfs_wait_tree_block_writeback(next);
+ 				btrfs_tree_unlock(next);
+ 
+@@ -1869,8 +1843,8 @@
+ 			next = path->nodes[orig_level];
+ 
+ 			btrfs_tree_lock(next);
++			clean_tree_block(trans, log, next);
+ 			btrfs_set_lock_blocking(next);
+-			clean_tree_block(trans, log, next);
+ 			btrfs_wait_tree_block_writeback(next);
+ 			btrfs_tree_unlock(next);
+ 

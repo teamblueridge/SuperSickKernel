@@ -143,19 +143,19 @@ struct io_context *current_io_context(gfp_t gfp_flags, int node)
  */
 struct io_context *get_io_context(gfp_t gfp_flags, int node)
 {
-	struct io_context *ret = NULL;
+	struct io_context *ioc = NULL;
 
 	/*
 	 * Check for unlikely race with exiting task. ioc ref count is
 	 * zero when ioc is being detached.
 	 */
 	do {
-		ret = current_io_context(gfp_flags, node);
-		if (unlikely(!ret))
+		ioc = current_io_context(gfp_flags, node);
+		if (unlikely(!ioc))
 			break;
-	} while (!atomic_long_inc_not_zero(&ret->refcount));
+	} while (!atomic_long_inc_not_zero(&ioc->refcount));
 
-	return ret;
+	return ioc;
 }
 EXPORT_SYMBOL(get_io_context);
 

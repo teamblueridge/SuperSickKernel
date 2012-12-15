@@ -1,0 +1,83 @@
+--- drivers/net/wireless/iwlegacy/iwl-core.c
++++ drivers/net/wireless/iwlegacy/iwl-core.c
+@@ -931,14 +931,13 @@
+ 	priv->cfg->ops->lib->dump_nic_error_log(priv);
+ 	if (priv->cfg->ops->lib->dump_fh)
+ 		priv->cfg->ops->lib->dump_fh(priv, NULL, false);
+-	priv->cfg->ops->lib->dump_nic_event_log(priv, false, NULL, false);
+ #ifdef CONFIG_IWLWIFI_LEGACY_DEBUG
+ 	if (iwl_legacy_get_debug_level(priv) & IWL_DL_FW_ERRORS)
+ 		iwl_legacy_print_rx_config_cmd(priv,
+ 					&priv->contexts[IWL_RXON_CTX_BSS]);
+ #endif
+ 
+-	wake_up_interruptible(&priv->wait_command_queue);
++	wake_up(&priv->wait_command_queue);
+ 
+ 	/* Keep the restart process from trying to send host
+ 	 * commands by clearing the INIT status bit */
+@@ -1727,37 +1699,34 @@
+ 	}
+ 	force_reset->reset_success_count++;
+ 	force_reset->last_force_reset_jiffies = jiffies;
+-	IWL_DEBUG_INFO(priv, "perform force reset (%d)\n", mode);
+-	switch (mode) {
+-	case IWL_RF_RESET:
+-		_iwl_legacy_force_rf_reset(priv);
+-		break;
+-	case IWL_FW_RESET:
+-		/*
+-		 * if the request is from external(ex: debugfs),
+-		 * then always perform the request in regardless the module
+-		 * parameter setting
+-		 * if the request is from internal (uCode error or driver
+-		 * detect failure), then fw_restart module parameter
+-		 * need to be check before performing firmware reload
+-		 */
+-		if (!external && !priv->cfg->mod_params->restart_fw) {
+-			IWL_DEBUG_INFO(priv, "Cancel firmware reload based on "
+-				       "module parameter setting\n");
+-			break;
+-		}
+-		IWL_ERR(priv, "On demand firmware reload\n");
+-		/* Set the FW error flag -- cleared on iwl_down */
+-		set_bit(STATUS_FW_ERROR, &priv->status);
+-		wake_up_interruptible(&priv->wait_command_queue);
+-		/*
+-		 * Keep the restart process from trying to send host
+-		 * commands by clearing the INIT status bit
+-		 */
+-		clear_bit(STATUS_READY, &priv->status);
+-		queue_work(priv->workqueue, &priv->restart);
+-		break;
++
++	/*
++	 * if the request is from external(ex: debugfs),
++	 * then always perform the request in regardless the module
++	 * parameter setting
++	 * if the request is from internal (uCode error or driver
++	 * detect failure), then fw_restart module parameter
++	 * need to be check before performing firmware reload
++	 */
++
++	if (!external && !priv->cfg->mod_params->restart_fw) {
++		IWL_DEBUG_INFO(priv, "Cancel firmware reload based on "
++			       "module parameter setting\n");
++		return 0;
+ 	}
++
++	IWL_ERR(priv, "On demand firmware reload\n");
++
++	/* Set the FW error flag -- cleared on iwl_down */
++	set_bit(STATUS_FW_ERROR, &priv->status);
++	wake_up(&priv->wait_command_queue);
++	/*
++	 * Keep the restart process from trying to send host
++	 * commands by clearing the INIT status bit
++	 */
++	clear_bit(STATUS_READY, &priv->status);
++	queue_work(priv->workqueue, &priv->restart);
++
+ 	return 0;
+ }
+ 

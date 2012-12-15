@@ -1,0 +1,15 @@
+--- drivers/net/bnx2.c
++++ drivers/net/bnx2.c
+@@ -8223,6 +8269,12 @@
+ 	bp->timer.data = (unsigned long) bp;
+ 	bp->timer.function = bnx2_timer;
+ 
++#ifdef BCM_CNIC
++	if (bnx2_shmem_rd(bp, BNX2_ISCSI_INITIATOR) & BNX2_ISCSI_INITIATOR_EN)
++		bp->cnic_eth_dev.max_iscsi_conn =
++			(bnx2_shmem_rd(bp, BNX2_ISCSI_MAX_CONN) &
++			 BNX2_ISCSI_MAX_CONN_MASK) >> BNX2_ISCSI_MAX_CONN_SHIFT;
++#endif
+ 	pci_save_state(pdev);
+ 
+ 	return 0;

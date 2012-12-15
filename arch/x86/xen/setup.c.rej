@@ -1,0 +1,22 @@
+--- arch/x86/xen/setup.c
++++ arch/x86/xen/setup.c
+@@ -184,6 +183,19 @@
+ 					PFN_UP(start_pci), PFN_DOWN(last));
+ 	return identity;
+ }
++
++static unsigned long __init xen_get_max_pages(void)
++{
++	unsigned long max_pages = MAX_DOMAIN_PAGES;
++	domid_t domid = DOMID_SELF;
++	int ret;
++
++	ret = HYPERVISOR_memory_op(XENMEM_maximum_reservation, &domid);
++	if (ret > 0)
++		max_pages = ret;
++	return min(max_pages, MAX_DOMAIN_PAGES);
++}
++
+ /**
+  * machine_specific_memory_setup - Hook for machine specific memory setup.
+  **/

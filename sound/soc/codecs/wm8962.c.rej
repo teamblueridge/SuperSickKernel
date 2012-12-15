@@ -1,0 +1,37 @@
+--- sound/soc/codecs/wm8962.c
++++ sound/soc/codecs/wm8962.c
+@@ -2225,14 +2217,15 @@
+ 
+ 			snd_soc_update_bits(codec, WM8962_FLL_CONTROL_1,
+ 					    WM8962_FLL_ENA, WM8962_FLL_ENA);
++			if (wm8962->irq) {
++				timeout = msecs_to_jiffies(5);
++				timeout = wait_for_completion_timeout(&wm8962->fll_lock,
++								      timeout);
+ 
+-			timeout = msecs_to_jiffies(5);
+-			timeout = wait_for_completion_timeout(&wm8962->fll_lock,
+-							      timeout);
+-
+-			if (wm8962->irq && timeout == 0)
+-				dev_err(codec->dev,
+-					"Timed out starting FLL\n");
++				if (timeout == 0)
++					dev_err(codec->dev,
++						"Timed out starting FLL\n");
++			}
+ 		}
+ 		break;
+ 
+@@ -3846,11 +3840,6 @@
+ 	snd_soc_update_bits(codec, WM8962_CLOCKING2,
+ 			    WM8962_CLKREG_OVD, WM8962_CLKREG_OVD);
+ 
+-	/* Ensure that the oscillator and PLLs are disabled */
+-	snd_soc_update_bits(codec, WM8962_PLL2,
+-			    WM8962_OSC_ENA | WM8962_PLL2_ENA | WM8962_PLL3_ENA,
+-			    0);
+-
+ 	regulator_bulk_disable(ARRAY_SIZE(wm8962->supplies), wm8962->supplies);
+ 
+ 	if (pdata) {

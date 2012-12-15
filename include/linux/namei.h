@@ -68,7 +68,6 @@ enum {LAST_NORM, LAST_ROOT, LAST_DOT, LAST_DOTDOT, LAST_BIND};
 #define LOOKUP_EMPTY		0x4000
 
 extern int user_path_at(int, const char __user *, unsigned, struct path *);
-extern int user_path_at_empty(int, const char __user *, unsigned, struct path *, int *empty);
 
 #define user_path(name, path) user_path_at(AT_FDCWD, name, LOOKUP_FOLLOW, path)
 #define user_lpath(name, path) user_path_at(AT_FDCWD, name, 0, path)
@@ -77,9 +76,11 @@ extern int user_path_at_empty(int, const char __user *, unsigned, struct path *,
 
 extern int kern_path(const char *, unsigned, struct path *);
 
+extern struct dentry *kern_path_create(int, const char *, struct path *, int);
+extern struct dentry *user_path_create(int, const char __user *, struct path *, int);
 extern int kern_path_parent(const char *, struct nameidata *);
 extern int vfs_path_lookup(struct dentry *, struct vfsmount *,
-			   const char *, unsigned int, struct nameidata *);
+			   const char *, unsigned int, struct path *);
 
 extern struct file *lookup_instantiate_filp(struct nameidata *nd, struct dentry *dentry,
 		int (*open)(struct inode *, struct file *));

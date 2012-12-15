@@ -1,0 +1,17 @@
+--- drivers/gpu/drm/radeon/ni.c
++++ drivers/gpu/drm/radeon/ni.c
+@@ -833,12 +860,13 @@
+ 	rdev->config.cayman.tile_config |=
+ 		((gb_addr_config & ROW_SIZE_MASK) >> ROW_SIZE_SHIFT) << 12;
+ 
+-	rdev->config.cayman.backend_map = gb_backend_map;
+ 	WREG32(GB_BACKEND_MAP, gb_backend_map);
+ 	WREG32(GB_ADDR_CONFIG, gb_addr_config);
+ 	WREG32(DMIF_ADDR_CONFIG, gb_addr_config);
+ 	WREG32(HDP_ADDR_CONFIG, gb_addr_config);
+ 
++	cayman_program_channel_remap(rdev);
++
+ 	/* primary versions */
+ 	WREG32(CC_RB_BACKEND_DISABLE, cc_rb_backend_disable);
+ 	WREG32(CC_SYS_RB_BACKEND_DISABLE, cc_rb_backend_disable);

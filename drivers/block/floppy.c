@@ -4216,7 +4216,7 @@ static int __init floppy_init(void)
 	use_virtual_dma = can_use_virtual_dma & 1;
 	fdc_state[0].address = FDC1;
 	if (fdc_state[0].address == -1) {
-		del_timer_sync(&fd_timeout);
+		del_timer(&fd_timeout);
 		err = -ENODEV;
 		goto out_unreg_region;
 	}
@@ -4227,7 +4227,7 @@ static int __init floppy_init(void)
 	fdc = 0;		/* reset fdc in case of unexpected interrupt */
 	err = floppy_grab_irq_and_dma();
 	if (err) {
-		del_timer_sync(&fd_timeout);
+		del_timer(&fd_timeout);
 		err = -EBUSY;
 		goto out_unreg_region;
 	}
@@ -4284,7 +4284,7 @@ static int __init floppy_init(void)
 		user_reset_fdc(-1, FD_RESET_ALWAYS, false);
 	}
 	fdc = 0;
-	del_timer_sync(&fd_timeout);
+	del_timer(&fd_timeout);
 	current_drive = 0;
 	initialized = true;
 	if (have_no_fdc) {
@@ -4334,7 +4334,7 @@ out_unreg_blkdev:
 	unregister_blkdev(FLOPPY_MAJOR, "fd");
 out_put_disk:
 	while (dr--) {
-		del_timer_sync(&motor_off_timer[dr]);
+		del_timer(&motor_off_timer[dr]);
 		if (disks[dr]->queue)
 			blk_cleanup_queue(disks[dr]->queue);
 		put_disk(disks[dr]);

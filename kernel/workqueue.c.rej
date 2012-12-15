@@ -1,0 +1,39 @@
+--- kernel/workqueue.c
++++ kernel/workqueue.c
+@@ -3063,34 +3117,10 @@
+  */
+ void destroy_workqueue(struct workqueue_struct *wq)
+ {
+-	unsigned int flush_cnt = 0;
+ 	unsigned int cpu;
+ 
+-	/*
+-	 * Mark @wq dying and drain all pending works.  Once WQ_DYING is
+-	 * set, only chain queueing is allowed.  IOW, only currently
+-	 * pending or running work items on @wq can queue further work
+-	 * items on it.  @wq is flushed repeatedly until it becomes empty.
+-	 * The number of flushing is detemined by the depth of chaining and
+-	 * should be relatively short.  Whine if it takes too long.
+-	 */
+-	wq->flags |= WQ_DYING;
+-reflush:
+-	flush_workqueue(wq);
+-
+-	for_each_cwq_cpu(cpu, wq) {
+-		struct cpu_workqueue_struct *cwq = get_cwq(cpu, wq);
+-
+-		if (!cwq->nr_active && list_empty(&cwq->delayed_works))
+-			continue;
+-
+-		if (++flush_cnt == 10 ||
+-		    (flush_cnt % 100 == 0 && flush_cnt <= 1000))
+-			printk(KERN_WARNING "workqueue %s: flush on "
+-			       "destruction isn't complete after %u tries\n",
+-			       wq->name, flush_cnt);
+-		goto reflush;
+-	}
++	/* drain it before proceeding with destruction */
++	drain_workqueue(wq);
+ 
+ 	/*
+ 	 * wq list is used to freeze wq, remove from list after

@@ -528,7 +528,6 @@ static void tun_net_init(struct net_device *dev)
 		dev->netdev_ops = &tap_netdev_ops;
 		/* Ethernet TAP Device */
 		ether_setup(dev);
-		dev->priv_flags &= ~IFF_TX_SKB_SHARING;
 
 		random_ether_addr(dev->dev_addr);
 
@@ -868,7 +867,7 @@ static ssize_t tun_do_read(struct tun_struct *tun,
 		ret = tun_put_user(tun, skb, iv, len);
 		kfree_skb(skb);
 		break;
-	}
+	};
 
 	current->state = TASK_RUNNING;
 	remove_wait_queue(&tun->wq.wait, &wait);

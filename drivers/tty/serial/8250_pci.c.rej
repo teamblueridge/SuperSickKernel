@@ -1,0 +1,45 @@
+--- drivers/tty/serial/8250_pci.c
++++ drivers/tty/serial/8250_pci.c
+@@ -1599,11 +1698,6 @@
+ 		.device         = 0x800D,
+ 		.init		= pci_eg20t_init,
+ 	},
+-	{
+-		.vendor         = 0x10DB,
+-		.device         = 0x800D,
+-		.init		= pci_eg20t_init,
+-	},
+ 	/*
+ 	 * Cronyx Omega PCI (PLX-chip based)
+ 	 */
+@@ -3999,8 +4108,29 @@
+ 		0xA000, 0x1000,
+ 		0, 0, pbn_b0_1_115200 },
+ 
++	/* the 9901 is a rebranded 9912 */
++	{	PCI_VENDOR_ID_NETMOS, PCI_DEVICE_ID_NETMOS_9912,
++		0xA000, 0x1000,
++		0, 0, pbn_b0_1_115200 },
++
++	{	PCI_VENDOR_ID_NETMOS, PCI_DEVICE_ID_NETMOS_9922,
++		0xA000, 0x1000,
++		0, 0, pbn_b0_1_115200 },
++
++	{	PCI_VENDOR_ID_NETMOS, PCI_DEVICE_ID_NETMOS_9904,
++		0xA000, 0x1000,
++		0, 0, pbn_b0_1_115200 },
++
++	{	PCI_VENDOR_ID_NETMOS, PCI_DEVICE_ID_NETMOS_9900,
++		0xA000, 0x1000,
++		0, 0, pbn_b0_1_115200 },
++
++	{	PCI_VENDOR_ID_NETMOS, PCI_DEVICE_ID_NETMOS_9900,
++		0xA000, 0x3002,
++		0, 0, pbn_NETMOS9900_2s_115200 },
++
+ 	/*
+-	 * Best Connectivity PCI Multi I/O cards
++	 * Best Connectivity and Rosewill PCI Multi I/O cards
+ 	 */
+ 
+ 	{	PCI_VENDOR_ID_NETMOS, PCI_DEVICE_ID_NETMOS_9865,

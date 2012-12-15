@@ -54,7 +54,6 @@ static struct usb_driver btusb_driver;
 #define BTUSB_BCM92035		0x10
 #define BTUSB_BROKEN_ISOC	0x20
 #define BTUSB_WRONG_SCO_MTU	0x40
-#define BTUSB_ATH3012		0x80
 
 static struct usb_device_id btusb_table[] = {
 	/* Generic Bluetooth USB device */
@@ -78,14 +77,8 @@ static struct usb_device_id btusb_table[] = {
 	/* Apple MacBookAir3,1, MacBookAir3,2 */
 	{ USB_DEVICE(0x05ac, 0x821b) },
 
-	/* Apple MacBookAir4,1 */
-	{ USB_DEVICE(0x05ac, 0x821f) },
-
 	/* Apple MacBookPro8,2 */
 	{ USB_DEVICE(0x05ac, 0x821a) },
-
-	/* Apple MacMini5,1 */
-	{ USB_DEVICE(0x05ac, 0x8281) },
 
 	/* AVM BlueFRITZ! USB v2.0 */
 	{ USB_DEVICE(0x057c, 0x3800) },
@@ -939,15 +932,6 @@ static int btusb_probe(struct usb_interface *intf,
 
 	if (ignore_sniffer && id->driver_info & BTUSB_SNIFFER)
 		return -ENODEV;
-
-	if (id->driver_info & BTUSB_ATH3012) {
-		struct usb_device *udev = interface_to_usbdev(intf);
-
-		/* Old firmware would otherwise let ath3k driver load
-		 * patch and sysconfig files */
-		if (le16_to_cpu(udev->descriptor.bcdDevice) <= 0x0001)
-			return -ENODEV;
-	}
 
 	data = kzalloc(sizeof(*data), GFP_KERNEL);
 	if (!data)

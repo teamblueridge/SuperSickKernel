@@ -1,0 +1,207 @@
+--- drivers/usb/host/xhci-ring.c
++++ drivers/usb/host/xhci-ring.c
+@@ -514,8 +512,12 @@
+ 			(unsigned long long) addr);
+ }
+ 
++/* flip_cycle means flip the cycle bit of all but the first and last TRB.
++ * (The last TRB actually points to the ring enqueue pointer, which is not part
++ * of this TD.)  This is used to remove partially enqueued isoc TDs from a ring.
++ */
+ static void td_to_noop(struct xhci_hcd *xhci, struct xhci_ring *ep_ring,
+-		struct xhci_td *cur_td)
++		struct xhci_td *cur_td, bool flip_cycle)
+ {
+ 	struct xhci_segment *cur_seg;
+ 	union xhci_trb *cur_trb;
+@@ -523,12 +525,17 @@
+ 	for (cur_seg = cur_td->start_seg, cur_trb = cur_td->first_trb;
+ 			true;
+ 			next_trb(xhci, ep_ring, &cur_seg, &cur_trb)) {
+-		if ((le32_to_cpu(cur_trb->generic.field[3]) & TRB_TYPE_BITMASK)
+-		    == TRB_TYPE(TRB_LINK)) {
++		if (TRB_TYPE_LINK_LE32(cur_trb->generic.field[3])) {
+ 			/* Unchain any chained Link TRBs, but
+ 			 * leave the pointers intact.
+ 			 */
+ 			cur_trb->generic.field[3] &= cpu_to_le32(~TRB_CHAIN);
++			/* Flip the cycle bit (link TRBs can't be the first
++			 * or last TRB).
++			 */
++			if (flip_cycle)
++				cur_trb->generic.field[3] ^=
++					cpu_to_le32(TRB_CYCLE);
+ 			xhci_dbg(xhci, "Cancel (unchain) link TRB\n");
+ 			xhci_dbg(xhci, "Address = %p (0x%llx dma); "
+ 					"in seg %p (0x%llx dma)\n",
+@@ -542,6 +549,11 @@
+ 			cur_trb->generic.field[2] = 0;
+ 			/* Preserve only the cycle bit of this TRB */
+ 			cur_trb->generic.field[3] &= cpu_to_le32(TRB_CYCLE);
++			/* Flip the cycle bit except on the first or last TRB */
++			if (flip_cycle && cur_trb != cur_td->first_trb &&
++					cur_trb != cur_td->last_trb)
++				cur_trb->generic.field[3] ^=
++					cpu_to_le32(TRB_CYCLE);
+ 			cur_trb->generic.field[3] |= cpu_to_le32(
+ 				TRB_TYPE(TRB_TR_NOOP));
+ 			xhci_dbg(xhci, "Cancel TRB %p (0x%llx dma) "
+@@ -720,14 +732,14 @@
+ 					cur_td->urb->stream_id,
+ 					cur_td, &deq_state);
+ 		else
+-			td_to_noop(xhci, ep_ring, cur_td);
++			td_to_noop(xhci, ep_ring, cur_td, false);
+ remove_finished_td:
+ 		/*
+ 		 * The event handler won't see a completion for this TD anymore,
+ 		 * so remove it from the endpoint ring's TD list.  Keep it in
+ 		 * the cancelled TD list for URB completion later.
+ 		 */
+-		list_del(&cur_td->td_list);
++		list_del_init(&cur_td->td_list);
+ 	}
+ 	last_unlinked_td = cur_td;
+ 	xhci_stop_watchdog_timer_in_irq(xhci, ep);
+@@ -755,7 +767,7 @@
+ 	do {
+ 		cur_td = list_entry(ep->cancelled_td_list.next,
+ 				struct xhci_td, cancelled_td_list);
+-		list_del(&cur_td->cancelled_td_list);
++		list_del_init(&cur_td->cancelled_td_list);
+ 
+ 		/* Clean up the cancelled URB */
+ 		/* Doesn't matter what we pass for status, since the core will
+@@ -863,9 +875,9 @@
+ 				cur_td = list_first_entry(&ring->td_list,
+ 						struct xhci_td,
+ 						td_list);
+-				list_del(&cur_td->td_list);
++				list_del_init(&cur_td->td_list);
+ 				if (!list_empty(&cur_td->cancelled_td_list))
+-					list_del(&cur_td->cancelled_td_list);
++					list_del_init(&cur_td->cancelled_td_list);
+ 				xhci_giveback_urb_in_irq(xhci, cur_td,
+ 						-ESHUTDOWN, "killed");
+ 			}
+@@ -874,7 +886,7 @@
+ 						&temp_ep->cancelled_td_list,
+ 						struct xhci_td,
+ 						cancelled_td_list);
+-				list_del(&cur_td->cancelled_td_list);
++				list_del_init(&cur_td->cancelled_td_list);
+ 				xhci_giveback_urb_in_irq(xhci, cur_td,
+ 						-ESHUTDOWN, "killed");
+ 			}
+@@ -1566,10 +1579,10 @@
+ 			else
+ 				*status = 0;
+ 		}
+-		list_del(&td->td_list);
++		list_del_init(&td->td_list);
+ 		/* Was this TD slated to be cancelled but completed anyway? */
+ 		if (!list_empty(&td->cancelled_td_list))
+-			list_del(&td->cancelled_td_list);
++			list_del_init(&td->cancelled_td_list);
+ 
+ 		urb_priv->td_cnt++;
+ 		/* Giveback the urb when all the tds are completed */
+@@ -1920,8 +1929,10 @@
+ 	int status = -EINPROGRESS;
+ 	struct urb_priv *urb_priv;
+ 	struct xhci_ep_ctx *ep_ctx;
++	struct list_head *tmp;
+ 	u32 trb_comp_code;
+ 	int ret = 0;
++	int td_num = 0;
+ 
+ 	slot_id = TRB_TO_SLOT_ID(le32_to_cpu(event->flags));
+ 	xdev = xhci->devs[slot_id];
+@@ -2060,7 +2077,18 @@
+ 			goto cleanup;
+ 		}
+ 
++		/* We've skipped all the TDs on the ep ring when ep->skip set */
++		if (ep->skip && td_num == 0) {
++			ep->skip = false;
++			xhci_dbg(xhci, "All tds on the ep_ring skipped. "
++						"Clear skip flag.\n");
++			ret = 0;
++			goto cleanup;
++		}
++
+ 		td = list_entry(ep_ring->td_list.next, struct xhci_td, td_list);
++		if (ep->skip)
++			td_num--;
+ 
+ 		/* Is this a TRB in the currently executing TD? */
+ 		event_seg = trb_in_td(ep_ring->deq_seg, ep_ring->dequeue,
+@@ -2507,11 +2533,8 @@
+ 
+ 	if (td_index == 0) {
+ 		ret = usb_hcd_link_urb_to_ep(bus_to_hcd(urb->dev->bus), urb);
+-		if (unlikely(ret)) {
+-			xhci_urb_free_priv(xhci, urb_priv);
+-			urb->hcpriv = NULL;
++		if (unlikely(ret))
+ 			return ret;
+-		}
+ 	}
+ 
+ 	td->urb = urb;
+@@ -3124,20 +3151,15 @@
+ 		struct urb *urb, int i)
+ {
+ 	int num_trbs = 0;
+-	u64 addr, td_len, running_total;
++	u64 addr, td_len;
+ 
+ 	addr = (u64) (urb->transfer_dma + urb->iso_frame_desc[i].offset);
+ 	td_len = urb->iso_frame_desc[i].length;
+ 
+-	running_total = TRB_MAX_BUFF_SIZE - (addr & (TRB_MAX_BUFF_SIZE - 1));
+-	running_total &= TRB_MAX_BUFF_SIZE - 1;
+-	if (running_total != 0)
+-		num_trbs++;
+-
+-	while (running_total < td_len) {
++	num_trbs = DIV_ROUND_UP(td_len + (addr & (TRB_MAX_BUFF_SIZE - 1)),
++			TRB_MAX_BUFF_SIZE);
++	if (num_trbs == 0)
+ 		num_trbs++;
+-		running_total += TRB_MAX_BUFF_SIZE;
+-	}
+ 
+ 	return num_trbs;
+ }
+@@ -3249,9 +3272,11 @@
+ 		addr = start_addr + urb->iso_frame_desc[i].offset;
+ 		td_len = urb->iso_frame_desc[i].length;
+ 		td_remain_len = td_len;
+-		/* FIXME: Ignoring zero-length packets, can those happen? */
+ 		total_packet_count = roundup(td_len,
+ 				le16_to_cpu(urb->ep->desc.wMaxPacketSize));
++		/* A zero-length transfer still involves at least one packet. */
++		if (total_packet_count == 0)
++			total_packet_count++;
+ 		burst_count = xhci_get_burst_count(xhci, urb->dev, urb,
+ 				total_packet_count);
+ 		residue = xhci_get_last_burst_packet_count(xhci,
+@@ -3261,12 +3286,13 @@
+ 
+ 		ret = prepare_transfer(xhci, xhci->devs[slot_id], ep_index,
+ 				urb->stream_id, trbs_per_td, urb, i, mem_flags);
+-		if (ret < 0)
+-			return ret;
++		if (ret < 0) {
++			if (i == 0)
++				return ret;
++			goto cleanup;
++		}
+ 
+-		urb_priv = urb->hcpriv;
+ 		td = urb_priv->td[i];
+-
+ 		for (j = 0; j < trbs_per_td; j++) {
+ 			u32 remainder = 0;
+ 			field = TRB_TBC(burst_count) | TRB_TLBPC(residue);

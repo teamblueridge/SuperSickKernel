@@ -1,0 +1,18 @@
+--- drivers/usb/musb/musb_core.c
++++ drivers/usb/musb/musb_core.c
+@@ -2282,13 +2235,13 @@
+ 				musb->context.index_regs[i].rxhubport);
+ 		}
+ 	}
++	musb_writeb(musb_base, MUSB_INDEX, musb->context.index);
+ }
+ 
+ static int musb_suspend(struct device *dev)
+ {
+-	struct platform_device *pdev = to_platform_device(dev);
++	struct musb	*musb = dev_to_musb(dev);
+ 	unsigned long	flags;
+-	struct musb	*musb = dev_to_musb(&pdev->dev);
+ 
+ 	spin_lock_irqsave(&musb->lock, flags);
+ 

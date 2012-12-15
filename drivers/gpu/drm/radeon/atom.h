@@ -138,7 +138,6 @@ struct atom_context {
 	int cs_equal, cs_above;
 	int io_mode;
 	uint32_t *scratch;
-	int scratch_size_bytes;
 };
 
 extern int atom_debug;

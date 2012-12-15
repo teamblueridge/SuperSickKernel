@@ -1,0 +1,22 @@
+--- drivers/target/loopback/tcm_loop.c
++++ drivers/target/loopback/tcm_loop.c
+@@ -117,17 +116,16 @@
+ 	 * Signal BIDI usage with T_TASK(cmd)->t_tasks_bidi
+ 	 */
+ 	if (scsi_bidi_cmnd(sc))
+-		T_TASK(se_cmd)->t_tasks_bidi = 1;
++		se_cmd->t_tasks_bidi = 1;
+ 	/*
+ 	 * Locate the struct se_lun pointer and attach it to struct se_cmd
+ 	 */
+-	if (transport_get_lun_for_cmd(se_cmd, NULL, tl_cmd->sc->device->lun) < 0) {
++	if (transport_lookup_cmd_lun(se_cmd, tl_cmd->sc->device->lun) < 0) {
+ 		kmem_cache_free(tcm_loop_cmd_cache, tl_cmd);
+ 		set_host_byte(sc, DID_NO_CONNECT);
+ 		return NULL;
+ 	}
+ 
+-	transport_device_setup_cmd(se_cmd);
+ 	return se_cmd;
+ }
+ 

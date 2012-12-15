@@ -1,0 +1,11 @@
+--- drivers/mmc/host/sdhci-s3c.c
++++ drivers/mmc/host/sdhci-s3c.c
+@@ -302,6 +303,8 @@
+ 		ctrl &= ~SDHCI_CTRL_8BITBUS;
+ 		break;
+ 	default:
++		ctrl &= ~SDHCI_CTRL_4BITBUS;
++		ctrl &= ~SDHCI_CTRL_8BITBUS;
+ 		break;
+ 	}
+ 

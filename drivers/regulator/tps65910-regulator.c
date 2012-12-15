@@ -49,7 +49,6 @@
 #define TPS65911_REG_LDO7		11
 #define TPS65911_REG_LDO8		12
 
-#define TPS65910_NUM_REGULATOR		13
 #define TPS65910_SUPPLY_STATE_ENABLED	0x1
 
 /* supported VIO voltages in milivolts */
@@ -264,11 +263,12 @@ static struct tps_info tps65911_regs[] = {
 };
 
 struct tps65910_reg {
-	struct regulator_desc desc[TPS65910_NUM_REGULATOR];
+	struct regulator_desc *desc;
 	struct tps65910 *mfd;
-	struct regulator_dev *rdev[TPS65910_NUM_REGULATOR];
-	struct tps_info *info[TPS65910_NUM_REGULATOR];
+	struct regulator_dev **rdev;
+	struct tps_info **info;
 	struct mutex mutex;
+	int num_regulators;
 	int mode;
 	int  (*get_ctrl_reg)(int);
 };
@@ -945,7 +945,7 @@ static __devinit int tps65910_probe(struct platform_device *pdev)
 				"failed to register %s regulator\n",
 				pdev->name);
 			err = PTR_ERR(rdev);
-			goto err;
+			goto err_unregister_regulator;
 		}
 
 		/* Save regulator for cleanup */
@@ -953,23 +953,31 @@ static __devinit int tps65910_probe(struct platform_device *pdev)
 	}
 	return 0;
 
-err:
+err_unregister_regulator:
 	while (--i >= 0)
 		regulator_unregister(pmic->rdev[i]);
-
+	kfree(pmic->rdev);
+err_free_info:
+	kfree(pmic->info);
+err_free_desc:
+	kfree(pmic->desc);
+err_free_pmic:
 	kfree(pmic);
 	return err;
 }
 
 static int __devexit tps65910_remove(struct platform_device *pdev)
 {
-	struct tps65910_reg *tps65910_reg = platform_get_drvdata(pdev);
+	struct tps65910_reg *pmic = platform_get_drvdata(pdev);
 	int i;
 
-	for (i = 0; i < TPS65910_NUM_REGULATOR; i++)
-		regulator_unregister(tps65910_reg->rdev[i]);
+	for (i = 0; i < pmic->num_regulators; i++)
+		regulator_unregister(pmic->rdev[i]);
 
-	kfree(tps65910_reg);
+	kfree(pmic->rdev);
+	kfree(pmic->info);
+	kfree(pmic->desc);
+	kfree(pmic);
 	return 0;
 }
 

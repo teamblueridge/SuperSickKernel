@@ -36,16 +36,16 @@
 enum {
 	NFS_LSEG_VALID = 0,	/* cleared when lseg is recalled/returned */
 	NFS_LSEG_ROC,		/* roc bit received from server */
-	NFS_LSEG_LAYOUTCOMMIT,	/* layoutcommit bit set for layoutcommit */
 };
 
 struct pnfs_layout_segment {
 	struct list_head pls_list;
-	struct list_head pls_lc_list;
 	struct pnfs_layout_range pls_range;
 	atomic_t pls_refcount;
 	unsigned long pls_flags;
 	struct pnfs_layout_hdr *pls_layout;
+	struct rpc_cred	*pls_lc_cred; /* LAYOUTCOMMIT credential */
+	loff_t pls_end_pos; /* LAYOUTCOMMIT write end */
 };
 
 enum pnfs_try_status {
@@ -124,8 +124,6 @@ struct pnfs_layout_hdr {
 	unsigned long		plh_block_lgets; /* block LAYOUTGET if >0 */
 	u32			plh_barrier; /* ignore lower seqids */
 	unsigned long		plh_flags;
-	loff_t			plh_lwb; /* last write byte for layoutcommit */
-	struct rpc_cred		*plh_lc_cred; /* layoutcommit cred */
 	struct inode		*plh_inode;
 };
 
@@ -161,6 +159,7 @@ enum pnfs_try_status pnfs_try_to_write_data(struct nfs_write_data *,
 enum pnfs_try_status pnfs_try_to_read_data(struct nfs_read_data *,
 					    const struct rpc_call_ops *);
 bool pnfs_generic_pg_test(struct nfs_pageio_descriptor *pgio, struct nfs_page *prev, struct nfs_page *req);
+void pnfs_set_lo_fail(struct pnfs_layout_segment *lseg);
 int pnfs_layout_process(struct nfs4_layoutget *lgp);
 void pnfs_free_lseg_list(struct list_head *tmp_list);
 void pnfs_destroy_layout(struct nfs_inode *);
@@ -304,6 +303,15 @@ static inline void pnfs_pageio_init(struct nfs_pageio_descriptor *pgio,
 		pgio->pg_test = ld->pg_test;
 }
 
+static inline void pnfs_pageio_init(struct nfs_pageio_descriptor *pgio,
+				    struct inode *inode)
+{
+	struct pnfs_layoutdriver_type *ld = NFS_SERVER(inode)->pnfs_curr_ld;
+
+	if (ld)
+		pgio->pg_test = ld->pg_test;
+}
+
 #else  /* CONFIG_NFS_V4_1 */
 
 static inline void pnfs_destroy_all_layouts(struct nfs_client *clp)
@@ -322,6 +330,28 @@ get_lseg(struct pnfs_layout_segment *lseg)
 
 static inline void put_lseg(struct pnfs_layout_segment *lseg)
 {
+}
+
+static inline struct pnfs_layout_segment *
+pnfs_update_layout(struct inode *ino, struct nfs_open_context *ctx,
+		   loff_t pos, u64 count, enum pnfs_iomode access_type,
+		   gfp_t gfp_flags)
+{
+	return NULL;
+}
+
+static inline enum pnfs_try_status
+pnfs_try_to_read_data(struct nfs_read_data *data,
+		      const struct rpc_call_ops *call_ops)
+{
+	return PNFS_NOT_ATTEMPTED;
+}
+
+static inline enum pnfs_try_status
+pnfs_try_to_write_data(struct nfs_write_data *data,
+		       const struct rpc_call_ops *call_ops, int how)
+{
+	return PNFS_NOT_ATTEMPTED;
 }
 
 static inline struct pnfs_layout_segment *

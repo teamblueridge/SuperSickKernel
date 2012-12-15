@@ -1,0 +1,56 @@
+--- drivers/scsi/bnx2fc/bnx2fc.h
++++ drivers/scsi/bnx2fc/bnx2fc.h
+@@ -156,20 +160,14 @@
+ 	spinlock_t fp_work_lock;
+ };
+ 
+-
+ struct bnx2fc_hba {
+-	struct list_head link;
++	struct list_head list;
+ 	struct cnic_dev *cnic;
+ 	struct pci_dev *pcidev;
+-	struct net_device *netdev;
+ 	struct net_device *phys_dev;
+ 	unsigned long reg_with_cnic;
+ 		#define BNX2FC_CNIC_REGISTERED           1
+-	struct packet_type fcoe_packet_type;
+-	struct packet_type fip_packet_type;
+ 	struct bnx2fc_cmd_mgr *cmd_mgr;
+-	struct workqueue_struct *timer_work_queue;
+-	struct kref kref;
+ 	spinlock_t hba_lock;
+ 	struct mutex hba_mutex;
+ 	unsigned long adapter_state;
+@@ -177,14 +175,9 @@
+ 		#define ADAPTER_STATE_GOING_DOWN	1
+ 		#define ADAPTER_STATE_LINK_DOWN		2
+ 		#define ADAPTER_STATE_READY		3
+-	u32 flags;
+-	unsigned long init_done;
+-		#define BNX2FC_FW_INIT_DONE		0
+-		#define BNX2FC_CTLR_INIT_DONE		1
+-		#define BNX2FC_CREATE_DONE		2
+-	struct fcoe_ctlr ctlr;
+-	u8 vlan_enabled;
+-	int vlan_id;
++	unsigned long flags;
++		#define BNX2FC_FLAG_FW_INIT_DONE	0
++		#define BNX2FC_FLAG_DESTROY_CMPL	1
+ 	u32 next_conn_id;
+ 	struct fcoe_task_ctx_entry **task_ctx;
+ 	dma_addr_t *task_ctx_dma;
+@@ -448,11 +462,13 @@
+ struct bnx2fc_unsol_els {
+ 	struct fc_lport *lport;
+ 	struct fc_frame *fp;
++	struct bnx2fc_hba *hba;
+ 	struct work_struct unsol_els_work;
+ };
+ 
+ 
+ 
++struct bnx2fc_cmd *bnx2fc_cmd_alloc(struct bnx2fc_rport *tgt);
+ struct bnx2fc_cmd *bnx2fc_elstm_alloc(struct bnx2fc_rport *tgt, int type);
+ void bnx2fc_cmd_release(struct kref *ref);
+ int bnx2fc_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *sc_cmd);

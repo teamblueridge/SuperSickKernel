@@ -1,0 +1,11 @@
+--- drivers/media/video/uvc/uvcvideo.h
++++ drivers/media/video/uvc/uvcvideo.h
+@@ -638,7 +637,7 @@
+ /* Video */
+ extern int uvc_video_init(struct uvc_streaming *stream);
+ extern int uvc_video_suspend(struct uvc_streaming *stream);
+-extern int uvc_video_resume(struct uvc_streaming *stream);
++extern int uvc_video_resume(struct uvc_streaming *stream, int reset);
+ extern int uvc_video_enable(struct uvc_streaming *stream, int enable);
+ extern int uvc_probe_video(struct uvc_streaming *stream,
+ 		struct uvc_streaming_control *probe);

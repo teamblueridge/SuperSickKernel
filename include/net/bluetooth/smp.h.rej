@@ -1,0 +1,39 @@
+--- include/net/bluetooth/smp.h
++++ include/net/bluetooth/smp.h
+@@ -16,23 +-6,6 @@
+ 	__u8	resp_key_dist;
+ } __packed;
+ 
+-#define SMP_IO_DISPLAY_ONLY	0x00
+-#define SMP_IO_DISPLAY_YESNO	0x01
+-#define SMP_IO_KEYBOARD_ONLY	0x02
+-#define SMP_IO_NO_INPUT_OUTPUT	0x03
+-#define SMP_IO_KEYBOARD_DISPLAY	0x04
+-
+-#define SMP_OOB_NOT_PRESENT	0x00
+-#define SMP_OOB_PRESENT		0x01
+-
+-#define SMP_DIST_ENC_KEY	0x01
+-#define SMP_DIST_ID_KEY		0x02
+-#define SMP_DIST_SIGN		0x04
+-
+-#define SMP_AUTH_NONE		0x00
+-#define SMP_AUTH_BONDING	0x01
+-#define SMP_AUTH_MITM		0x04
+-
+ #define SMP_CMD_PAIRING_CONFIRM	0x03
+ struct smp_cmd_pairing_confirm {
+ 	__u8	confirm_val[16];
+@@ -90,12 +51,4 @@
+ #define SMP_UNSPECIFIED		0x08
+ #define SMP_REPEATED_ATTEMPTS		0x09
+ 
+-#define SMP_MIN_ENC_KEY_SIZE		7
+-#define SMP_MAX_ENC_KEY_SIZE		16
+-
+-/* SMP Commands */
+-int smp_conn_security(struct l2cap_conn *conn, __u8 sec_level);
+-int smp_sig_channel(struct l2cap_conn *conn, struct sk_buff *skb);
+-int smp_distribute_keys(struct l2cap_conn *conn, __u8 force);
+-
+ #endif /* __SMP_H */

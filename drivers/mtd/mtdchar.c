@@ -320,7 +320,6 @@ static ssize_t mtd_write(struct file *file, const char __user *buf, size_t count
 			ops.mode = MTD_OOB_RAW;
 			ops.datbuf = kbuf;
 			ops.oobbuf = NULL;
-			ops.ooboffs = 0;
 			ops.len = len;
 
 			ret = mtd->write_oob(mtd, *ppos, &ops);
@@ -1193,7 +1192,7 @@ err_unregister_chdev:
 static void __exit cleanup_mtdchar(void)
 {
 	unregister_mtd_user(&mtdchar_notifier);
-	mntput(mtd_inode_mnt);
+	kern_unmount(mtd_inode_mnt);
 	unregister_filesystem(&mtd_inodefs_type);
 	__unregister_chrdev(MTD_CHAR_MAJOR, 0, 1 << MINORBITS, "mtd");
 }
