@@ -1,9 +1,5 @@
-/* drivers/video/msm_fb/mddi_client_toshiba.c
- *
- * Support for Toshiba TC358720XBG mddi client devices which require no
- * special initialization code.
- *
- * Copyright (C) 2007 Google Incorporated
+/*
+ * Copyright (C) 2008 HTC Corporation.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -15,70 +11,50 @@
  * GNU General Public License for more details.
  */
 
+#include <linux/sched.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
+#include <linux/delay.h>
 #include <linux/interrupt.h>
 #include <linux/gpio.h>
-#include <linux/sched.h>
+#include <linux/wakelock.h>
 #include <linux/slab.h>
-#include <mach/msm_fb.h>
+#include <mach/msm_fb-7x30.h>
 #include <mach/debug_display.h>
+#include <mach/panel_id.h>
 
-
-#define LCD_CONTROL_BLOCK_BASE 0x110000
-#define CMN         (LCD_CONTROL_BLOCK_BASE|0x10)
-#define INTFLG      (LCD_CONTROL_BLOCK_BASE|0x18)
-#define HCYCLE      (LCD_CONTROL_BLOCK_BASE|0x34)
-#define HDE_START   (LCD_CONTROL_BLOCK_BASE|0x3C)
-#define VPOS        (LCD_CONTROL_BLOCK_BASE|0xC0)
-#define MPLFBUF     (LCD_CONTROL_BLOCK_BASE|0x20)
-#define WAKEUP      (LCD_CONTROL_BLOCK_BASE|0x54)
-#define WSYN_DLY    (LCD_CONTROL_BLOCK_BASE|0x58)
-#define REGENB      (LCD_CONTROL_BLOCK_BASE|0x5C)
-
-#define BASE5 0x150000
-#define BASE6 0x160000
-#define BASE7 0x170000
-
-#define GPIOIEV     (BASE5 + 0x10)
-#define GPIOIE      (BASE5 + 0x14)
-#define GPIORIS     (BASE5 + 0x18)
-#define GPIOMIS     (BASE5 + 0x1C)
-#define GPIOIC      (BASE5 + 0x20)
-
-#define INTMASK     (BASE6 + 0x0C)
-#define INTMASK_VWAKEOUT (1U << 0)
-#define INTMASK_VWAKEOUT_ACTIVE_LOW (1U << 8)
-#define GPIOSEL     (BASE7 + 0x00)
-#define GPIOSEL_VWAKEINT (1U << 0)
-
-static DECLARE_WAIT_QUEUE_HEAD(toshiba_vsync_wait);
+static DECLARE_WAIT_QUEUE_HEAD(novtec_vsync_wait);
 
 struct panel_info {
 	struct msm_mddi_client_data *client_data;
 	struct platform_device pdev;
 	struct msm_panel_data panel_data;
-	struct msmfb_callback *toshiba_callback;
-	int toshiba_got_int;
+	struct msmfb_callback *novtec_callback;
+	struct wake_lock idle_lock;
+	int novtec_got_int;
 };
 
+static struct platform_device mddi_nov_cabc = {
+	.name = "nov_cabc",
+	.id = 0,
+};
 
-static void toshiba_request_vsync(struct msm_panel_data *panel_data,
+static void novtec_request_vsync(struct msm_panel_data *panel_data,
 				  struct msmfb_callback *callback)
 {
 	struct panel_info *panel = container_of(panel_data, struct panel_info,
 						panel_data);
 	struct msm_mddi_client_data *client_data = panel->client_data;
 
-	panel->toshiba_callback = callback;
-	if (panel->toshiba_got_int) {
-		panel->toshiba_got_int = 0;
+	panel->novtec_callback = callback;
+	if (panel->novtec_got_int) {
+		panel->novtec_got_int = 0;
 		client_data->activate_link(client_data);
 	}
 }
 
-static void toshiba_clear_vsync(struct msm_panel_data *panel_data)
+static void novtec_clear_vsync(struct msm_panel_data *panel_data)
 {
 	struct panel_info *panel = container_of(panel_data, struct panel_info,
 						panel_data);
@@ -87,23 +63,24 @@ static void toshiba_clear_vsync(struct msm_panel_data *panel_data)
 	client_data->activate_link(client_data);
 }
 
-static void toshiba_wait_vsync(struct msm_panel_data *panel_data)
+static void novtec_wait_vsync(struct msm_panel_data *panel_data)
 {
 	struct panel_info *panel = container_of(panel_data, struct panel_info,
 						panel_data);
 	struct msm_mddi_client_data *client_data = panel->client_data;
 
-	if (panel->toshiba_got_int) {
-		panel->toshiba_got_int = 0;
+	if (panel->novtec_got_int) {
+		panel->novtec_got_int = 0;
 		client_data->activate_link(client_data); /* clears interrupt */
 	}
-	if (wait_event_timeout(toshiba_vsync_wait, panel->toshiba_got_int, HZ/2) == 0)
+	if (wait_event_timeout(novtec_vsync_wait, panel->novtec_got_int,
+				HZ/2) == 0)
 		PR_DISP_ERR("timeout waiting for VSYNC\n");
-	panel->toshiba_got_int = 0;
+	panel->novtec_got_int = 0;
 	/* interrupt clears when screen dma starts */
 }
 
-static int toshiba_suspend(struct msm_panel_data *panel_data)
+static int novtec_suspend(struct msm_panel_data *panel_data)
 {
 	struct panel_info *panel = container_of(panel_data, struct panel_info,
 						panel_data);
@@ -113,9 +90,11 @@ static int toshiba_suspend(struct msm_panel_data *panel_data)
 		client_data->private_client_data;
 	int ret;
 
+	wake_lock(&panel->idle_lock);
 	ret = bridge_data->uninit(bridge_data, client_data);
+	wake_unlock(&panel->idle_lock);
 	if (ret) {
-		PR_DISP_INFO("mddi toshiba client: non zero return from "
+		PR_DISP_INFO("mddi novtec client: non zero return from "
 			"uninit\n");
 		return ret;
 	}
@@ -123,7 +102,7 @@ static int toshiba_suspend(struct msm_panel_data *panel_data)
 	return 0;
 }
 
-static int toshiba_resume(struct msm_panel_data *panel_data)
+static int novtec_resume(struct msm_panel_data *panel_data)
 {
 	struct panel_info *panel = container_of(panel_data, struct panel_info,
 						panel_data);
@@ -133,14 +112,16 @@ static int toshiba_resume(struct msm_panel_data *panel_data)
 		client_data->private_client_data;
 	int ret;
 
+	wake_lock(&panel->idle_lock);
 	client_data->resume(client_data);
+	wake_unlock(&panel->idle_lock);
 	ret = bridge_data->init(bridge_data, client_data);
 	if (ret)
 		return ret;
 	return 0;
 }
 
-static int toshiba_blank(struct msm_panel_data *panel_data)
+static int novtec_blank(struct msm_panel_data *panel_data)
 {
 	struct panel_info *panel = container_of(panel_data, struct panel_info,
 						panel_data);
@@ -151,7 +132,7 @@ static int toshiba_blank(struct msm_panel_data *panel_data)
 	return bridge_data->blank(bridge_data, client_data);
 }
 
-static int toshiba_unblank(struct msm_panel_data *panel_data)
+static int novtec_unblank(struct msm_panel_data *panel_data)
 {
 	struct panel_info *panel = container_of(panel_data, struct panel_info,
 						panel_data);
@@ -162,16 +143,16 @@ static int toshiba_unblank(struct msm_panel_data *panel_data)
 	return bridge_data->unblank(bridge_data, client_data);
 }
 
-irqreturn_t toshiba_vsync_interrupt(int irq, void *data)
+static irqreturn_t novtec_vsync_interrupt(int irq, void *data)
 {
 	struct panel_info *panel = data;
 
-	panel->toshiba_got_int = 1;
-	if (panel->toshiba_callback) {
-		panel->toshiba_callback->func(panel->toshiba_callback);
-		panel->toshiba_callback = 0;
+	panel->novtec_got_int = 1;
+	if (panel->novtec_callback) {
+		panel->novtec_callback->func(panel->novtec_callback);
+		panel->novtec_callback = 0;
 	}
-	wake_up(&toshiba_vsync_wait);
+	wake_up(&novtec_vsync_wait);
 	return IRQ_HANDLED;
 }
 
@@ -179,7 +160,11 @@ static int setup_vsync(struct panel_info *panel,
 		       int init)
 {
 	int ret;
-	int gpio = 97;
+#if defined(CONFIG_ARCH_MSM7X30)
+	int gpio = 30;
+#else
+	int gpio = 98;
+#endif
 	unsigned int irq;
 
 	if (!init) {
@@ -198,7 +183,7 @@ static int setup_vsync(struct panel_info *panel,
 	if (ret < 0)
 		goto err_get_irq_num_failed;
 
-	ret = request_irq(irq, toshiba_vsync_interrupt, IRQF_TRIGGER_RISING,
+	ret = request_irq(irq, novtec_vsync_interrupt, IRQF_TRIGGER_FALLING,
 			  "vsync", panel);
 	if (ret)
 		goto err_request_irq_failed;
@@ -216,36 +201,45 @@ err_request_gpio_failed:
 	return ret;
 }
 
-static int mddi_toshiba_probe(struct platform_device *pdev)
+static int mddi_novtec_probe(struct platform_device *pdev)
 {
+#ifndef CONFIG_MDP4_HW_VSYNC
 	int ret;
+#endif
 	struct msm_mddi_client_data *client_data = pdev->dev.platform_data;
 	struct msm_mddi_bridge_platform_data *bridge_data =
 		client_data->private_client_data;
+	struct panel_data *panel_data = &bridge_data->panel_conf;
 	struct panel_info *panel =
 		kzalloc(sizeof(struct panel_info), GFP_KERNEL);
+
 	if (!panel)
 		return -ENOMEM;
 	platform_set_drvdata(pdev, panel);
 
-	/* mddi_remote_write(mddi, 0, WAKEUP); */
-	client_data->remote_write(client_data, GPIOSEL_VWAKEINT, GPIOSEL);
-	client_data->remote_write(client_data, INTMASK_VWAKEOUT, INTMASK);
+	PR_DISP_DEBUG("%s\n", __func__);
 
+	if (panel_data->caps & MSMFB_CAP_CABC) {
+		PR_DISP_INFO("CABC enabled\n");
+		mddi_nov_cabc.dev.platform_data = client_data;
+		platform_device_register(&mddi_nov_cabc);
+	}
+
+#ifndef CONFIG_MDP4_HW_VSYNC
 	ret = setup_vsync(panel, 1);
 	if (ret) {
 		dev_err(&pdev->dev, "mddi_bridge_setup_vsync failed\n");
 		return ret;
 	}
-
+#endif
 	panel->client_data = client_data;
-	panel->panel_data.suspend = toshiba_suspend;
-	panel->panel_data.resume = toshiba_resume;
-	panel->panel_data.wait_vsync = toshiba_wait_vsync;
-	panel->panel_data.request_vsync = toshiba_request_vsync;
-	panel->panel_data.clear_vsync = toshiba_clear_vsync;
-	panel->panel_data.blank = toshiba_blank;
-	panel->panel_data.unblank = toshiba_unblank;
+	panel->panel_data.suspend = novtec_suspend;
+	panel->panel_data.resume = novtec_resume;
+	panel->panel_data.wait_vsync = novtec_wait_vsync;
+	panel->panel_data.request_vsync = novtec_request_vsync;
+	panel->panel_data.clear_vsync = novtec_clear_vsync;
+	panel->panel_data.blank = novtec_blank;
+	panel->panel_data.unblank = novtec_unblank;
 	panel->panel_data.fb_data =  &bridge_data->fb_data;
 	panel->panel_data.caps = MSMFB_CAP_PARTIAL_UPDATES;
 
@@ -254,13 +248,13 @@ static int mddi_toshiba_probe(struct platform_device *pdev)
 	panel->pdev.resource = client_data->fb_resource;
 	panel->pdev.num_resources = 1;
 	panel->pdev.dev.platform_data = &panel->panel_data;
-	bridge_data->init(bridge_data, client_data);
 	platform_device_register(&panel->pdev);
+	wake_lock_init(&panel->idle_lock, WAKE_LOCK_IDLE, "nov_idle_lock");
 
 	return 0;
 }
 
-static int mddi_toshiba_remove(struct platform_device *pdev)
+static int mddi_novtec_remove(struct platform_device *pdev)
 {
 	struct panel_info *panel = platform_get_drvdata(pdev);
 
@@ -270,16 +264,16 @@ static int mddi_toshiba_remove(struct platform_device *pdev)
 }
 
 static struct platform_driver mddi_client_d263_0000 = {
-	.probe = mddi_toshiba_probe,
-	.remove = mddi_toshiba_remove,
-	.driver = { .name = "mddi_c_d263_0000" },
+	.probe = mddi_novtec_probe,
+	.remove = mddi_novtec_remove,
+	.driver = { .name = "mddi_c_b9f6_5580" },
 };
 
-static int __init mddi_client_toshiba_init(void)
+static int __init mddi_client_novtec_init(void)
 {
 	platform_driver_register(&mddi_client_d263_0000);
 	return 0;
 }
 
-module_init(mddi_client_toshiba_init);
+module_init(mddi_client_novtec_init);
 
