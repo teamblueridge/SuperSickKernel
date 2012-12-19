@@ -61,12 +61,13 @@ obj-$(CONFIG_IWM)	+= iwmc3200wifi/
 
 obj-$(CONFIG_MWIFIEX)	+= mwifiex/
 
-obj-$(CONFIG_BCM4329)	+= bcm4329/
-obj-$(CONFIG_BCMDHD)	+= bcmdhd/
+ifeq ($(CONFIG_BCMDHD_HTC),y)
+  obj-$(CONFIG_BCMDHD)	+= bcmdhd_htc/
+else
+  obj-$(CONFIG_BCMDHD)  += bcmdhd/
+endif
 
 obj-$(CONFIG_LIBRA_SDIOIF)	+= libra/
 obj-$(CONFIG_WCNSS_CORE)	+= wcnss/
 
 obj-$(CONFIG_QUALCOMM_WLAN)        += qualcomm_wlan/prima/CORE/HDD/src/
-
-obj-$(CONFIG_BCM4330B2)   += bcm4330b2/
