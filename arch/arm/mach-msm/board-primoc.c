@@ -86,6 +86,8 @@
 #include "devices.h"
 #include "timer.h"
 #ifdef CONFIG_USB_G_ANDROID
+#include <mach/htc_usb.h>
+#include <linux/usb/android_composite.h>
 #include <linux/usb/android.h>
 #include <mach/usbdiag.h>
 #endif
@@ -2607,7 +2609,24 @@ static struct platform_device msm_device_adspdec = {
 
 #ifdef CONFIG_USB_G_ANDROID
 static struct android_usb_platform_data android_usb_pdata = {
-	.update_pid_and_serial_num = NULL,
+	.vendor_id	= 0x0BB4,
+	.product_id	= 0x0ce6,
+	.version	= 0x0100,
+	.product_name		= "Android Phone",
+	.manufacturer_name	= "HTC",
+	.num_products = ARRAY_SIZE(usb_products),
+	.products = usb_products,
+	.num_functions = ARRAY_SIZE(usb_functions_all),
+	.functions = usb_functions_all,
+	.fserial_init_string = "tty:modem,tty,tty:serial",
+#ifdef CONFIG_SKU_VMUS
+	.nluns = 1,
+#else
+	.nluns = 2,
+#endif
+
+	.req_reset_during_switch_func = 1,
+	.usb_id_pin_gpio = PRIMOC_GPIO_USB_ID1_PIN,
 };
 
 static struct platform_device android_usb_device = {
@@ -4719,7 +4738,7 @@ static void primoc_reset(void)
 void primoc_add_usb_devices(void)
 {
 	printk(KERN_INFO "%s rev: %d\n", __func__, system_rev);
-
+	android_usb_pdata.products[0].product_id = android_usb_pdata.product_id;
 	config_primoc_usb_id_gpios(0);
 	msm_device_gadget_peripheral.dev.parent = &msm_device_otg.dev;
 	platform_device_register(&msm_device_gadget_peripheral);
@@ -4728,6 +4747,7 @@ void primoc_add_usb_devices(void)
 
 static int __init board_serialno_setup(char *serialno)
 {
+	android_usb_pdata.serial_number = serialno;
 	return 1;
 }
 
