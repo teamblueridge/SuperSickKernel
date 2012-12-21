@@ -1437,10 +1437,3 @@ config SKU_VMUS
 
 
 endif # USB_GADGET
-
-config USB_HTC_SWITCH_STUB
-	depends on USB_G_ANDROID
-	bool "USB HTC function switch stub"
-	default n
-	help
-	  Provide dummy HTC USB function switch sysfs device for libhtc_ril.

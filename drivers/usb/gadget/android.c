@@ -1961,10 +1961,6 @@ static struct device_attribute *android_usb_attributes[] = {
 
 #include "htc_attr.c"
 
-#ifdef CONFIG_USB_HTC_SWITCH_STUB
-#include "htc_attr.c"
-#endif
-
 /*-------------------------------------------------------------------------*/
 /* Composite driver */
 
@@ -2310,14 +2306,6 @@ static int __devinit android_probe(struct platform_device *pdev)
 {
 	struct android_usb_platform_data *pdata = pdev->dev.platform_data;
 	struct android_dev *dev = _android_dev;
-
-#ifdef CONFIG_USB_HTC_SWITCH_STUB
-	int err;
-	err = sysfs_create_group(&pdev->dev.kobj, &htc_attr_group);
-	if (err) {
-		pr_err("%s: failed to create HTC USB devices\n", __func__);
-	}
-#endif
 
 	dev->pdata = pdata;
 
