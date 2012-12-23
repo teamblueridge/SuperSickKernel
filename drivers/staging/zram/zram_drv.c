@@ -15,10 +15,6 @@
 #define KMSG_COMPONENT "zram"
 #define pr_fmt(fmt) KMSG_COMPONENT ": " fmt
 
-#ifdef CONFIG_ZRAM_DEBUG
-#define DEBUG
-#endif
-
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/bio.h>
@@ -29,15 +25,59 @@
 #include <linux/genhd.h>
 #include <linux/highmem.h>
 #include <linux/slab.h>
-#include <linux/lzo.h>
 #include <linux/string.h>
 #include <linux/vmalloc.h>
 
 #include "zram_drv.h"
 
+#if defined(CONFIG_ZRAM_LZO)
+#include <linux/lzo.h>
+#define WMSIZE		LZO1X_MEM_COMPRESS
+#define COMPRESS(s, sl, d, dl, wm)	\
+	lzo1x_1_compress(s, sl, d, dl, wm)
+#define DECOMPRESS(s, sl, d, dl)	\
+	lzo1x_decompress_safe(s, sl, d, dl)
+#elif defined(CONFIG_ZRAM_SNAPPY)
+#include "../snappy/csnappy.h" /* if built in drivers/staging */
+#define WMSIZE_ORDER	((PAGE_SHIFT > 14) ? (15) : (PAGE_SHIFT+1))
+#define WMSIZE		(1 << WMSIZE_ORDER)
+static int
+snappy_compress_(
+	const unsigned char *src,
+	size_t src_len,
+	unsigned char *dst,
+	size_t *dst_len,
+	void *workmem)
+{
+	const unsigned char *end = csnappy_compress_fragment(
+		src, (uint32_t)src_len, dst, workmem, WMSIZE_ORDER);
+	*dst_len = end - dst;
+	return 0;
+}
+static int
+snappy_decompress_(
+	const unsigned char *src,
+	size_t src_len,
+	unsigned char *dst,
+	size_t *dst_len)
+{
+	uint32_t dst_len_ = (uint32_t)*dst_len;
+	int ret = csnappy_decompress_noheader(src, src_len, dst, &dst_len_);
+	*dst_len = (size_t)dst_len_;
+	return ret;
+}
+#define COMPRESS(s, sl, d, dl, wm)	\
+	snappy_compress_(s, sl, d, dl, wm)
+#define DECOMPRESS(s, sl, d, dl)	\
+	snappy_decompress_(s, sl, d, dl)
+#else
+#error either CONFIG_ZRAM_LZO or CONFIG_ZRAM_SNAPPY must be defined
+#endif
+
+
 /* Globals */
 static int zram_major;
-struct zram *devices;
+struct zram *zram_devices;
 
 /* Module params (documentation at end) */
 unsigned int num_devices;
@@ -177,6 +217,24 @@ out:
 	zram->table[index].offset = 0;
 }
 
+static void zram_discard(struct zram *zram, struct bio *bio)
+{
+	u32 i, npages, index;
+
+	if (unlikely(!zram->init_done))
+		goto out;
+		
+	npages = bio->bi_size / PAGE_SIZE;
+	index = bio->bi_sector >> SECTORS_PER_PAGE_SHIFT;
+
+	for (i = 0; i < npages; i++)
+		zram_free_page(zram, index++);
+
+out:
+	zram_stat64_inc(zram, &zram->stats.discard);
+	bio_endio(bio, 0);
+}
+
 static void handle_zero_page(struct page *page)
 {
 	void *user_mem;
@@ -198,18 +256,24 @@ static void handle_uncompressed_page(struct zram *zram,
 			zram->table[index].offset;
 
 	memcpy(user_mem, cmem, PAGE_SIZE);
-	kunmap_atomic(user_mem, KM_USER0);
 	kunmap_atomic(cmem, KM_USER1);
+	kunmap_atomic(user_mem, KM_USER0);
 
 	flush_dcache_page(page);
 }
 
-static void zram_read(struct zram *zram, struct bio *bio)
+static int zram_read(struct zram *zram, struct bio *bio)
 {
 
 	int i;
 	u32 index;
 	struct bio_vec *bvec;
+
+	if (unlikely(!zram->init_done)) {
+		set_bit(BIO_UPTODATE, &bio->bi_flags);
+		bio_endio(bio, 0);
+		return 0;
+	}
 
 	zram_stat64_inc(zram, &zram->stats.num_reads);
 	index = bio->bi_sector >> SECTORS_PER_PAGE_SHIFT;
@@ -233,7 +297,7 @@ static void zram_read(struct zram *zram, struct bio *bio)
 		if (unlikely(!zram->table[index].page)) {
 			pr_debug("Read before write: sector=%lu, size=%u",
 				(ulong)(bio->bi_sector), bio->bi_size);
-			handle_zero_page(page);
+			/* Do nothing */
 			index++;
 			continue;
 		}
@@ -251,16 +315,16 @@ static void zram_read(struct zram *zram, struct bio *bio)
 		cmem = kmap_atomic(zram->table[index].page, KM_USER1) +
 				zram->table[index].offset;
 
-		ret = lzo1x_decompress_safe(
+		ret = DECOMPRESS(
 			cmem + sizeof(*zheader),
 			xv_get_object_size(cmem) - sizeof(*zheader),
 			user_mem, &clen);
 
-		kunmap_atomic(user_mem, KM_USER0);
 		kunmap_atomic(cmem, KM_USER1);
+		kunmap_atomic(user_mem, KM_USER0);
 
 		/* Should NEVER happen. Return bio error if it does. */
-		if (unlikely(ret != LZO_E_OK)) {
+		if (unlikely(ret)) {
 			pr_err("Decompression failed! err=%d, page=%u\n",
 				ret, index);
 			zram_stat64_inc(zram, &zram->stats.failed_reads);
@@ -273,23 +337,29 @@ static void zram_read(struct zram *zram, struct bio *bio)
 
 	set_bit(BIO_UPTODATE, &bio->bi_flags);
 	bio_endio(bio, 0);
-	return;
+	return 0;
 
 out:
 	bio_io_error(bio);
+	return 0;
 }
 
-static void zram_write(struct zram *zram, struct bio *bio)
+static int zram_write(struct zram *zram, struct bio *bio)
 {
-	int i;
+	int i, ret;
 	u32 index;
 	struct bio_vec *bvec;
+
+	if (unlikely(!zram->init_done)) {
+		ret = zram_init_device(zram);
+		if (ret)
+			goto out;
+	}
 
 	zram_stat64_inc(zram, &zram->stats.num_writes);
 	index = bio->bi_sector >> SECTORS_PER_PAGE_SHIFT;
 
 	bio_for_each_segment(bvec, bio, i) {
-		int ret;
 		u32 offset;
 		size_t clen;
 		struct zobj_header *zheader;
@@ -319,17 +389,10 @@ static void zram_write(struct zram *zram, struct bio *bio)
 			continue;
 		}
 
-		ret = lzo1x_1_compress(user_mem, PAGE_SIZE, src, &clen,
-					zram->compress_workmem);
+		COMPRESS(user_mem, PAGE_SIZE, src, &clen,
+				zram->compress_workmem);
 
 		kunmap_atomic(user_mem, KM_USER0);
-
-		if (unlikely(ret != LZO_E_OK)) {
-			mutex_unlock(&zram->lock);
-			pr_err("Compression failed! err=%d\n", ret);
-			zram_stat64_inc(zram, &zram->stats.failed_writes);
-			goto out;
-		}
 
 		/*
 		 * Page is incompressible. Store it as-is (uncompressed)
@@ -399,10 +462,11 @@ memstore:
 
 	set_bit(BIO_UPTODATE, &bio->bi_flags);
 	bio_endio(bio, 0);
-	return;
+	return 0;
 
 out:
 	bio_io_error(bio);
+	return 0;
 }
 
 /*
@@ -427,6 +491,7 @@ static inline int valid_io_request(struct zram *zram, struct bio *bio)
  */
 static int zram_make_request(struct request_queue *queue, struct bio *bio)
 {
+	int ret = 0;
 	struct zram *zram = queue->queuedata;
 
 	if (!valid_io_request(zram, bio)) {
@@ -435,22 +500,22 @@ static int zram_make_request(struct request_queue *queue, struct bio *bio)
 		return 0;
 	}
 
-	if (unlikely(!zram->init_done) && zram_init_device(zram)) {
-		bio_io_error(bio);
+	if (unlikely(bio->bi_rw & REQ_DISCARD)) {
+		zram_discard(zram, bio);
 		return 0;
 	}
 
 	switch (bio_data_dir(bio)) {
 	case READ:
-		zram_read(zram, bio);
+		ret = zram_read(zram, bio);
 		break;
 
 	case WRITE:
-		zram_write(zram, bio);
+		ret = zram_write(zram, bio);
 		break;
 	}
 
-	return 0;
+	return ret;
 }
 
 void zram_reset_device(struct zram *zram)
@@ -511,7 +576,7 @@ int zram_init_device(struct zram *zram)
 
 	zram_set_disksize(zram, totalram_pages << PAGE_SHIFT);
 
-	zram->compress_workmem = kzalloc(LZO1X_MEM_COMPRESS, GFP_KERNEL);
+	zram->compress_workmem = kzalloc(WMSIZE, GFP_KERNEL);
 	if (!zram->compress_workmem) {
 		pr_err("Error allocating compressor working memory!\n");
 		ret = -ENOMEM;
@@ -526,7 +591,7 @@ int zram_init_device(struct zram *zram)
 	}
 
 	num_pages = zram->disksize >> PAGE_SHIFT;
-	zram->table = vzalloc(num_pages * sizeof(*zram->table));
+	zram->table = vmalloc(num_pages * sizeof(*zram->table));
 	if (!zram->table) {
 		pr_err("Error allocating zram address table\n");
 		/* To prevent accessing table entries during cleanup */
@@ -534,6 +599,7 @@ int zram_init_device(struct zram *zram)
 		ret = -ENOMEM;
 		goto fail;
 	}
+	memset(zram->table, 0, num_pages * sizeof(*zram->table));
 
 	set_capacity(zram->disk, zram->disksize >> SECTOR_SHIFT);
 
@@ -561,7 +627,8 @@ fail:
 	return ret;
 }
 
-void zram_slot_free_notify(struct block_device *bdev, unsigned long index)
+#if defined(CONFIG_SWAP_FREE_NOTIFY)
+static void zram_slot_free_notify(struct block_device *bdev, unsigned long index)
 {
 	struct zram *zram;
 
@@ -569,9 +636,12 @@ void zram_slot_free_notify(struct block_device *bdev, unsigned long index)
 	zram_free_page(zram, index);
 	zram_stat64_inc(zram, &zram->stats.notify_free);
 }
+#endif
 
 static const struct block_device_operations zram_devops = {
+#if defined(CONFIG_SWAP_FREE_NOTIFY)
 	.swap_slot_free_notify = zram_slot_free_notify,
+#endif
 	.owner = THIS_MODULE
 };
 
@@ -619,19 +689,24 @@ static int create_device(struct zram *zram, int device_id)
 	 * and n*PAGE_SIZED sized I/O requests.
 	 */
 	blk_queue_physical_block_size(zram->disk->queue, PAGE_SIZE);
-	blk_queue_logical_block_size(zram->disk->queue,
-					ZRAM_LOGICAL_BLOCK_SIZE);
+	blk_queue_logical_block_size(zram->disk->queue, PAGE_SIZE);
 	blk_queue_io_min(zram->disk->queue, PAGE_SIZE);
 	blk_queue_io_opt(zram->disk->queue, PAGE_SIZE);
 
+	zram->disk->queue->limits.discard_granularity = PAGE_SIZE;
+	zram->disk->queue->limits.max_discard_sectors = UINT_MAX;
+	queue_flag_set_unlocked(QUEUE_FLAG_DISCARD, zram->disk->queue);
+
 	add_disk(zram->disk);
 
+#ifdef CONFIG_SYSFS
 	ret = sysfs_create_group(&disk_to_dev(zram->disk)->kobj,
 				&zram_disk_attr_group);
 	if (ret < 0) {
 		pr_warning("Error creating sysfs group");
 		goto out;
 	}
+#endif
 
 	zram->init_done = 0;
 
@@ -641,8 +716,10 @@ out:
 
 static void destroy_device(struct zram *zram)
 {
+#ifdef CONFIG_SYSFS
 	sysfs_remove_group(&disk_to_dev(zram->disk)->kobj,
 			&zram_disk_attr_group);
+#endif
 
 	if (zram->disk) {
 		del_gendisk(zram->disk);
@@ -678,14 +755,14 @@ static int __init zram_init(void)
 
 	/* Allocate the device array and initialize each one */
 	pr_info("Creating %u devices ...\n", num_devices);
-	devices = kzalloc(num_devices * sizeof(struct zram), GFP_KERNEL);
-	if (!devices) {
+	zram_devices = kzalloc(num_devices * sizeof(struct zram), GFP_KERNEL);
+	if (!zram_devices) {
 		ret = -ENOMEM;
 		goto unregister;
 	}
 
 	for (dev_id = 0; dev_id < num_devices; dev_id++) {
-		ret = create_device(&devices[dev_id], dev_id);
+		ret = create_device(&zram_devices[dev_id], dev_id);
 		if (ret)
 			goto free_devices;
 	}
@@ -694,8 +771,8 @@ static int __init zram_init(void)
 
 free_devices:
 	while (dev_id)
-		destroy_device(&devices[--dev_id]);
-	kfree(devices);
+		destroy_device(&zram_devices[--dev_id]);
+	kfree(zram_devices);
 unregister:
 	unregister_blkdev(zram_major, "zram");
 out:
@@ -708,7 +785,7 @@ static void __exit zram_exit(void)
 	struct zram *zram;
 
 	for (i = 0; i < num_devices; i++) {
-		zram = &devices[i];
+		zram = &zram_devices[i];
 
 		destroy_device(zram);
 		if (zram->init_done)
@@ -717,7 +794,7 @@ static void __exit zram_exit(void)
 
 	unregister_blkdev(zram_major, "zram");
 
-	kfree(devices);
+	kfree(zram_devices);
 	pr_debug("Cleanup done!\n");
 }
 
