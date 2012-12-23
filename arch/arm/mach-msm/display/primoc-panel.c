@@ -189,7 +189,7 @@ primoc_backlight_switch(int on)
 
 	if (on) {
 		printk(KERN_DEBUG "turn on backlight\n");
-		max8957_set_bl_on_off(MAX8957_WLED_1, MAX8957_WLED_EN);
+// TESTING CRT		max8957_set_bl_on_off(MAX8957_WLED_1, MAX8957_WLED_EN);
 		set_bit(GATE_ON, &cabc.status);
 		val = cabc.lcd_backlight.brightness;
 		/*LED core uses get_brightness for default value
@@ -202,7 +202,7 @@ primoc_backlight_switch(int on)
 		clear_bit(GATE_ON, &cabc.status);
 		cabc.last_shrink_br = 0;
 		printk(KERN_DEBUG "turn off backlight\n");
-		max8957_set_bl_on_off(MAX8957_WLED_1, MAX8957_WLED_DIS);
+// TESTING CRT		max8957_set_bl_on_off(MAX8957_WLED_1, MAX8957_WLED_DIS);
 		primoc_set_brightness(&cabc.lcd_backlight, 0);
 	}
 }
