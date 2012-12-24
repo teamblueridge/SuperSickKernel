@@ -61,6 +61,8 @@ static struct clk *axi_clk;
 
 #define DEFAULT_BRIGHTNESS      PWM_USER_DEF
 
+#define MSM_FB_SIZE	0x780000
+
 static struct cabc_t {
 	struct led_classdev lcd_backlight;
 	struct msm_mddi_client_data *client_data;
