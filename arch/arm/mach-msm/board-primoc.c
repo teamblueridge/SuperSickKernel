@@ -34,7 +34,6 @@
 #include <linux/ofn_atlab.h>
 #include <linux/power_supply.h>
 #include <linux/i2c/isa1200.h>
-#include <linux/input/kp_flip_switch.h>
 #include <linux/msm_adc.h>
 #include <linux/dma-mapping.h>
 #include <linux/proc_fs.h>
@@ -4699,35 +4698,6 @@ static struct i2c_board_info msm_isa1200_board_info[] = {
 };
 
 
-static int kp_flip_mpp_config(void)
-{
-	struct pm8xxx_mpp_config_data kp_flip_mpp = {
-		.type = PM8XXX_MPP_TYPE_D_INPUT,
-		.level = PM8018_MPP_DIG_LEVEL_S3,
-		.control = PM8XXX_MPP_DIN_TO_INT,
-	};
-
-	return pm8xxx_mpp_config(PM8058_MPP_PM_TO_SYS(PM_FLIP_MPP),
-						&kp_flip_mpp);
-}
-
-static struct flip_switch_pdata flip_switch_data = {
-	.name = "kp_flip_switch",
-	.flip_gpio = PM8058_GPIO_PM_TO_SYS(PM8058_GPIOS) + PM_FLIP_MPP,
-	.left_key = KEY_OPEN,
-	.right_key = KEY_CLOSE,
-	.active_low = 0,
-	.wakeup = 1,
-	.flip_mpp_config = kp_flip_mpp_config,
-};
-
-static struct platform_device flip_switch_device = {
-	.name   = "kp_flip_switch",
-	.id	= -1,
-	.dev    = {
-		.platform_data = &flip_switch_data,
-	}
-};
 #endif /* CONFIG_HAPTIC_ISA1200 */
 
 static void primoc_reset(void)
