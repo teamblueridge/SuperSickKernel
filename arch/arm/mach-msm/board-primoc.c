@@ -929,7 +929,6 @@ static struct htc_battery_max8957_platform_data htc_battery_max8957_pdev_data = 
 };
 #endif
 
-#if 1
 static int max8957_gpios_init(void)
 {
 	/* direct key */
@@ -965,7 +964,6 @@ static struct resource resources_max8957_gpio[] = {
 		.flags = IORESOURCE_IRQ,
 	},
 };
-#endif
 
 static struct mfd_cell max8957_sid1_subdevs[] = {
 #ifdef CONFIG_BACKLIGHT_MAX8957
@@ -987,7 +985,6 @@ static struct mfd_cell max8957_sid1_subdevs[] = {
 		.pdata_size = sizeof(max8957_lpg_leds_data),
 	},
 #endif /* CONFIG_LEDS_MAX8957_LPG */
-#if 1
 	{
 		.name = "max8957-gpio",
 		.id = -1,
@@ -996,7 +993,6 @@ static struct mfd_cell max8957_sid1_subdevs[] = {
 		.num_resources  = ARRAY_SIZE(resources_max8957_gpio),
 		.resources      = resources_max8957_gpio,
 	},
-#endif
 };
 
 static struct mfd_cell max8957_sid4_subdevs[] = {
@@ -1337,16 +1333,6 @@ static struct camera_led_est msm_camera_sensor_s5k4e5yx_led_table[] = {
 		.min_step = 41,
 		.max_step = 48
 	},
-	/*
-		{
-		.enable = 0,
-		.led_state = FL_MODE_FLASH_LEVEL7,
-		.current_ma = 700,
-		.lumen_value = 700,
-		.min_step = 21,
-		.max_step = 22
-	},
-	*/
 		{
 		.enable = 1,
 		.led_state = FL_MODE_FLASH,
@@ -2839,28 +2825,18 @@ static void __init msm_qsd_spi_init(void)
 	qsd_device_spi.dev.platform_data = &qsd_spi_pdata;
 }
 
-static struct android_pmem_platform_data android_pmem_pdata = {
-	.name = "pmem",
-	.allocator_type = PMEM_ALLOCATORTYPE_ALLORNOTHING,
-	.cached = 1,
-	.memory_type = MEMTYPE_EBI1,
-};
-
+#ifdef CONFIG_ANDROID_PMEM
 static struct platform_device android_pmem_device = {
 	.name = "android_pmem",
 	.id = 0,
 	.dev = { .platform_data = &android_pmem_pdata },
 };
 
-static struct resource msm_fb_resources[] = {
-	{
-		.flags  = IORESOURCE_DMA,
-	}
-};
-
-static struct platform_device msm_migrate_pages_device = {
-	.name   = "msm_migrate_pages",
-	.id     = -1,
+static struct android_pmem_platform_data android_pmem_pdata = {
+	.name = "pmem",
+	.allocator_type = PMEM_ALLOCATORTYPE_ALLORNOTHING,
+	.cached = 1,
+	.memory_type = MEMTYPE_EBI1,
 };
 
 static struct android_pmem_platform_data android_pmem_adsp_pdata = {
@@ -2900,6 +2876,18 @@ static struct platform_device android_pmem_audio_device = {
        .name = "android_pmem",
        .id = 4,
        .dev = { .platform_data = &android_pmem_audio_pdata },
+};
+#endif
+
+static struct resource msm_fb_resources[] = {
+	{
+		.flags  = IORESOURCE_DMA,
+	}
+};
+
+static struct platform_device msm_migrate_pages_device = {
+	.name   = "msm_migrate_pages",
+	.id     = -1,
 };
 
 #if defined(CONFIG_CRYPTO_DEV_QCRYPTO) || \
@@ -3419,14 +3407,18 @@ static struct platform_device *devices[] __initdata = {
 	/*&msm_device_ssbi6,*/
 	&msm_device_ssbi7,
 #endif
+#ifdef CONFIG_ANDROID_PMEM
 	&android_pmem_device,
+#endif
 	&msm_migrate_pages_device,
 #ifdef CONFIG_MSM_ROTATOR
 	&msm_rotator_device,
 #endif
+#ifdef CONFIG_ANDROID_PMEM
 	&android_pmem_adsp_device,
 	&android_pmem_adsp2_device,
 	&android_pmem_audio_device,
+#endif
 	&msm_device_i2c,
 	&msm_device_i2c_2,
 	&hs_device,
@@ -4938,6 +4930,7 @@ static void __init primoc_init(void)
 
 }
 
+#ifdef CONFIG_ANDROID_PMEM
 static unsigned pmem_sf_size = MSM_PMEM_SF_SIZE;
 static int __init pmem_sf_size_setup(char *p)
 {
@@ -4945,6 +4938,7 @@ static int __init pmem_sf_size_setup(char *p)
 	return 0;
 }
 early_param("pmem_sf_size", pmem_sf_size_setup);
+#endif
 
 static unsigned fb_size = MSM_FB_SIZE;
 static int __init fb_size_setup(char *p)
@@ -4954,6 +4948,7 @@ static int __init fb_size_setup(char *p)
 }
 early_param("fb_size", fb_size_setup);
 
+#ifdef CONFIG_ANDROID_PMEM
 static unsigned pmem_adsp_size = MSM_PMEM_ADSP_SIZE;
 static int __init pmem_adsp_size_setup(char *p)
 {
@@ -4977,6 +4972,7 @@ static int __init pmem_audio_size_setup(char *p)
 	return 0;
 }
 early_param("pmem_audio_size", pmem_audio_size_setup);
+#endif
 
 static struct memtype_reserve msm7x30_reserve_table[] __initdata = {
 	[MEMTYPE_SMI] = {
@@ -4989,6 +4985,7 @@ static struct memtype_reserve msm7x30_reserve_table[] __initdata = {
 	},
 };
 
+#ifdef CONFIG_ANDROID_PMEM
 static void __init size_pmem_device(struct android_pmem_platform_data *pdata, unsigned long start, unsigned long size)
 {
 	pdata->start = start;
@@ -5000,6 +4997,7 @@ static void __init size_pmem_device(struct android_pmem_platform_data *pdata, un
 		pr_info("%s: pmem %s requests %lu bytes dynamically.\r\n",
 			__func__, pdata->name, size);
 }
+#endif
 
 static void __init size_pmem_devices(void)
 {
@@ -5032,8 +5030,11 @@ static void __init reserve_pmem_memory(void)
 
 static void __init msm7x30_calculate_reserve_sizes(void)
 {
+#ifdef CONFIG_ANDROID_PMEM
+	pr_info("Whoo! simonsimons34 debug code: PMEM.. old and deprecated.. but its allocating.. so...");
 	size_pmem_devices();
 	reserve_pmem_memory();
+#endif
 }
 
 static int msm7x30_paddr_to_memtype(unsigned int paddr)
