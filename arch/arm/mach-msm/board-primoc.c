@@ -111,11 +111,8 @@
 #include "board-msm7x30-regulator.h"
 #include <mach/board_htc.h>
 #include <mach/cable_detect.h>
-
-#ifdef CONFIG_ION_MSM
 #include <linux/ion.h>
 #include <mach/ion.h>
-#endif
 
 #ifdef CONFIG_BT
 #include <mach/htc_bdaddress.h>
@@ -3424,18 +3421,14 @@ static struct platform_device *devices[] __initdata = {
 	/*&msm_device_ssbi6,*/
 	&msm_device_ssbi7,
 #endif
-#ifdef CONFIG_ANDROID_PMEM
 	&android_pmem_device,
-#endif
 	&msm_migrate_pages_device,
 #ifdef CONFIG_MSM_ROTATOR
 	&msm_rotator_device,
 #endif
-#ifdef CONFIG_ANDROID_PMEM
 	&android_pmem_adsp_device,
 	&android_pmem_adsp2_device,
 	&android_pmem_audio_device,
-#endif
 	&msm_device_i2c,
 	&msm_device_i2c_2,
 	&hs_device,
@@ -4950,7 +4943,6 @@ static void __init primoc_init(void)
 
 }
 
-#ifdef CONFIG_ANDROID_PMEM
 static unsigned pmem_sf_size = MSM_PMEM_SF_SIZE;
 static int __init pmem_sf_size_setup(char *p)
 {
@@ -4958,7 +4950,6 @@ static int __init pmem_sf_size_setup(char *p)
 	return 0;
 }
 early_param("pmem_sf_size", pmem_sf_size_setup);
-#endif
 
 static unsigned fb_size = MSM_FB_SIZE;
 static int __init fb_size_setup(char *p)
@@ -4968,7 +4959,6 @@ static int __init fb_size_setup(char *p)
 }
 early_param("fb_size", fb_size_setup);
 
-#ifdef CONFIG_ANDROID_PMEM
 static unsigned pmem_adsp_size = MSM_PMEM_ADSP_SIZE;
 static int __init pmem_adsp_size_setup(char *p)
 {
@@ -4992,7 +4982,6 @@ static int __init pmem_audio_size_setup(char *p)
 	return 0;
 }
 early_param("pmem_audio_size", pmem_audio_size_setup);
-#endif
 
 #ifdef CONFIG_ION_MSM
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
@@ -5093,11 +5082,13 @@ static void __init size_pmem_device(struct android_pmem_platform_data *pdata, un
 static void __init size_pmem_devices(void)
 {
 #ifdef CONFIG_ANDROID_PMEM
+#ifndef CONFIG_MSM_MULTIMEDIA_USE_ION
 	size_pmem_device(&android_pmem_adsp_pdata, 0, pmem_adsp_size);
 	size_pmem_device(&android_pmem_adsp2_pdata, 0, pmem_adsp2_size);
 	size_pmem_device(&android_pmem_audio_pdata, 0, pmem_audio_size);
 	size_pmem_device(&android_pmem_pdata, 0, pmem_sf_size);
 	msm7x30_reserve_table[MEMTYPE_EBI1].size += PMEM_KERNEL_EBI1_SIZE;
+#endif
 #endif
 }
 
@@ -5125,7 +5116,6 @@ static void __init reserve_pmem_memory(void)
 #endif
 }
 
-#ifdef CONFIG_ION_MSM
 static void __init size_ion_devices(void)
 {
 #ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
@@ -5143,21 +5133,16 @@ static void __init reserve_ion_memory(void)
 	msm7x30_reserve_table[MEMTYPE_EBI0].size += MSM_ION_SF_SIZE;
 #endif
 }
-#endif
 
 static void __init msm7x30_calculate_reserve_sizes(void)
 {
-#ifdef CONFIG_ANDROID_PMEM
-	pr_info("Whoo! simonsimons34 debug code: PMEM.. old and deprecated.. but its allocating.. so...");
+	/* Pmem is depreciated but still semi needed */
 	size_pmem_devices();
 	reserve_pmem_memory();
-#endif
-#ifdef CONFIG_ION_MSM
-	pr_info("Nice, your using ion by simonsimons34!");
+	/* ION is where its at */
 	fix_sizes();
 	size_ion_devices();
 	reserve_ion_memory();
-#endif
 }
 
 static int msm7x30_paddr_to_memtype(unsigned int paddr)
