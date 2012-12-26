@@ -3479,6 +3479,9 @@ static struct platform_device *devices[] __initdata = {
 #endif
 	&msm_ebi0_thermal,
 	&msm_ebi1_thermal,
+#ifdef CONFIG_ION_MSM
+        &ion_dev,
+#endif
 #ifdef CONFIG_SERIAL_BCM_BT_LPM
        &bcm_bt_lpm_device,
 #endif
@@ -3497,9 +3500,6 @@ static struct platform_device *devices[] __initdata = {
 	&primoc_timed_gpios,
 	&cable_detect_device,
 	&htc_drm,
-#ifdef CONFIG_ION_MSM
-	&ion_dev,
-#endif
 };
 
 static struct msm_gpio msm_i2c_gpios_hw[] = {
