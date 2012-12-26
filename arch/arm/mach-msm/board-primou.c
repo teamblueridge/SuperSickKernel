@@ -129,6 +129,12 @@
 #define PM8058_MPP_BASE			   PM8058_GPIO_PM_TO_SYS(PM8058_GPIOS)
 #define PM8058_MPP_PM_TO_SYS(pm_gpio)	   (pm_gpio + PM8058_MPP_BASE)
 
+#if 0
+#define PMIC_GPIO_WLAN_EXT_POR  22 /* PMIC GPIO 23 is volume up GPIO */
+#define BMA150_GPIO_INT 1
+#define HAP_LVL_SHFT_MSM_GPIO 24
+#endif
+
 int htc_get_usb_accessory_adc_level(uint32_t *buffer);
 #include <mach/cable_detect.h>
 
@@ -1187,11 +1193,65 @@ static struct i2c_board_info i2c_devices[] = {
 		       PM8058_GPIO_PM_TO_SYS(PRIMOU_GPIO_PS_INT_N))
 	},
 };
+/*
+static struct bma250_platform_data gsensor_platform_data = {
+	.intr = MSM_GPIO_TO_INT(PM8058_GPIO_PM_TO_SYS(
+			PRIMOU_GPIO_GSENSOR_INT)),
+	.chip_layout = 1,
+};
+
+static struct i2c_board_info i2c_Sensors_devices[] = {
+	{
+		I2C_BOARD_INFO(BMA250_I2C_NAME, 0x30 >> 1),
+		.platform_data = &gsensor_platform_data,
+		.irq = MSM_GPIO_TO_INT(PM8058_GPIO_PM_TO_SYS(PRIMOU_GPIO_GSENSOR_INT)),
+	},
+};
+*/
 
 static int pm8058_gpios_init(void)
 {
 	int rc;
+/*
+	struct pm8xxx_gpio_init_info sdc4_en = {
+		PM8058_GPIO_PM_TO_SYS(PMIC_GPIO_SDC4_EN_N),
+		{
+			.direction      = PM_GPIO_DIR_OUT,
+			.pull           = PM_GPIO_PULL_NO,
+			.vin_sel        = PM8058_GPIO_VIN_L5,
+			.function       = PM_GPIO_FUNC_NORMAL,
+			.inv_int_pol    = 0,
+			.out_strength   = PM_GPIO_STRENGTH_LOW,
+			.output_value   = 0,
+		},
+	};
 
+	struct pm8xxx_gpio_init_info haptics_enable = {
+		PM8058_GPIO_PM_TO_SYS(PMIC_GPIO_HAP_ENABLE),
+		{
+			.direction      = PM_GPIO_DIR_OUT,
+			.pull           = PM_GPIO_PULL_NO,
+			.out_strength   = PM_GPIO_STRENGTH_HIGH,
+			.function       = PM_GPIO_FUNC_NORMAL,
+			.inv_int_pol    = 0,
+			.vin_sel        = 2,
+			.output_buffer  = PM_GPIO_OUT_BUF_CMOS,
+			.output_value   = 0,
+		},
+	};
+
+	struct pm8xxx_gpio_init_info hdmi_5V_en = {
+		PM8058_GPIO_PM_TO_SYS(PMIC_GPIO_HDMI_5V_EN_V3),
+		{
+			.direction      = PM_GPIO_DIR_OUT,
+			.pull           = PM_GPIO_PULL_NO,
+			.vin_sel        = PM8058_GPIO_VIN_VPH,
+			.function       = PM_GPIO_FUNC_NORMAL,
+			.out_strength   = PM_GPIO_STRENGTH_LOW,
+			.output_value   = 0,
+		},
+	};
+*/
 	struct pm8xxx_gpio_init_info gpio15 = {
 		PM8058_GPIO_PM_TO_SYS(PRIMOU_GPIO_FLASH_EN),
 		{
@@ -1291,6 +1351,21 @@ static int pm8058_gpios_init(void)
 		pr_err("%s PRIMOU_AUD_AMP_EN config failed\n", __func__);
 		return rc;
 	}
+/*
+	if (machine_is_msm8x55_svlte_surf() || machine_is_msm8x55_svlte_ffa() ||
+						machine_is_msm7x30_fluid())
+		hdmi_5V_en.gpio = PMIC_GPIO_HDMI_5V_EN_V2;
+	else
+		hdmi_5V_en.gpio = PMIC_GPIO_HDMI_5V_EN_V3;
+
+	hdmi_5V_en.gpio = PM8058_GPIO_PM_TO_SYS(hdmi_5V_en.gpio);
+
+	rc = pm8xxx_gpio_config(hdmi_5V_en.gpio, &hdmi_5V_en.config);
+	if (rc) {
+		pr_err("%s PMIC_GPIO_HDMI_5V_EN config failed\n", __func__);
+		return rc;
+	}
+*/
 
 #ifdef CONFIG_MMC_MSM_CARD_HW_DETECTION
 	if (machine_is_msm7x30_fluid())
@@ -1307,6 +1382,32 @@ static int pm8058_gpios_init(void)
 	pm8xxx_gpio_config(keypad_gpio.gpio, &keypad_gpio.config);
 	keypad_gpio.gpio = PRIMOU_VOL_DN;
 	pm8xxx_gpio_config(keypad_gpio.gpio, &keypad_gpio.config);
+#if 0
+	if (machine_is_msm7x30_fluid()) {
+		/* Haptics gpio */
+		rc = pm8xxx_gpio_config(haptics_enable.gpio,
+						&haptics_enable.config);
+		if (rc) {
+			pr_err("%s: PMIC GPIO %d write failed\n", __func__,
+							haptics_enable.gpio);
+			return rc;
+		}
+		/* SCD4 gpio */
+		rc = pm8xxx_gpio_config(sdc4_en.gpio, &sdc4_en.config);
+		if (rc) {
+			pr_err("%s PMIC_GPIO_SDC4_EN_N config failed\n",
+								 __func__);
+			return rc;
+		}
+		rc = gpio_request(sdc4_en.gpio, "sdc4_en");
+		if (rc) {
+			pr_err("%s PMIC_GPIO_SDC4_EN_N gpio_request failed\n",
+				__func__);
+			return rc;
+		}
+		gpio_set_value_cansleep(sdc4_en.gpio, 0);
+	}
+#endif
 	return 0;
 }
 /* Regulator API support */
@@ -1970,6 +2071,16 @@ static struct camera_led_est msm_camera_sensor_s5k4e5yx_led_table[] = {
 		.min_step = 41,
 		.max_step = 48
 	},
+	/*
+		{
+		.enable = 0,
+		.led_state = FL_MODE_FLASH_LEVEL7,
+		.current_ma = 700,
+		.lumen_value = 700,
+		.min_step = 21,
+		.max_step = 22
+	},
+	*/
 		{
 		.enable = 1,
 		.led_state = FL_MODE_FLASH,
@@ -2200,7 +2311,10 @@ static uint32_t rawchip_on_gpio_table[] = {
 	GPIO_CFG(PRIMOU_GPIO_RAW_INTR0, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA), /* RAW CHIP INT0 */
 	GPIO_CFG(PRIMOU_GPIO_RAW_INTR1, 0, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA), /* RAW CHIP INT1 */
 	GPIO_CFG(PRIMOU_GPIO_MCAM_SPI_CS, 2 , GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_4MA),
-
+#if 0
+	GPIO_CFG(PRIMOU_GPIO_CAM1_VCM_PWD, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+	GPIO_CFG(PRIMOU_GPIO_CAM1_PWD, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA),
+#endif
 	GPIO_CFG(PRIMOU_GPIO_CAM_MCLK, 1, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA), /* MCLK */
 	GPIO_CFG(PRIMOU_GPIO_CAM_I2C_SCL, 2, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA), /* I2C SCL*/
 	GPIO_CFG(PRIMOU_GPIO_CAM_I2C_SDA, 2, GPIO_CFG_INPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA), /* I2C SDA*/
@@ -2521,11 +2635,19 @@ static unsigned int msm_timpani_setup_power(void)
 	rc = config_timpani_reset();
 	if (rc < 0)
 		goto out;
-
+#if 0
+	rc = vreg_enable(vreg_marimba_1);
+	if (rc) {
+		printk(KERN_ERR "%s: vreg_enable() = %d\n",
+					__func__, rc);
+		goto out;
+	}
+#endif
 	rc = vreg_enable(vreg_marimba_2);
 	if (rc) {
 		printk(KERN_ERR "%s: vreg_enable() = %d\n",
 					__func__, rc);
+	/*	goto fail_disable_vreg_marimba_1; */
 	}
 
 	rc = gpio_direction_output(TIMPANI_RESET_GPIO, 1);
@@ -2539,6 +2661,10 @@ static unsigned int msm_timpani_setup_power(void)
 	} else
 		goto out;
 
+#if 0
+fail_disable_vreg_marimba_1:
+	vreg_disable(vreg_marimba_1);
+#endif
 out:
 	return rc;
 };
@@ -2546,7 +2672,13 @@ out:
 static void msm_timpani_shutdown_power(void)
 {
 	int rc;
-
+#if 0
+	rc = vreg_disable(vreg_marimba_1);
+	if (rc) {
+		printk(KERN_ERR "%s: return val: %d\n",
+					__func__, rc);
+	}
+#endif
 	rc = vreg_disable(vreg_marimba_2);
 	if (rc) {
 		printk(KERN_ERR "%s: return val: %d\n",
@@ -2587,7 +2719,14 @@ static unsigned int msm_marimba_gpio_config_svlte(int gpio_cfg_marimba)
 static unsigned int msm_marimba_setup_power(void)
 {
 	int rc;
-
+#if 0
+	rc = vreg_enable(vreg_marimba_1);
+	if (rc) {
+		printk(KERN_ERR "%s: vreg_enable() = %d \n",
+					__func__, rc);
+		goto out;
+	}
+#endif
 	rc = vreg_enable(vreg_marimba_2);
 	if (rc) {
 		printk(KERN_ERR "%s: vreg_enable() = %d \n",
@@ -2622,7 +2761,13 @@ out:
 static void msm_marimba_shutdown_power(void)
 {
 	int rc;
-
+#if 0
+	rc = vreg_disable(vreg_marimba_1);
+	if (rc) {
+		printk(KERN_ERR "%s: return val: %d\n",
+					__func__, rc);
+	}
+#endif
 	rc = vreg_disable(vreg_marimba_2);
 	if (rc) {
 		printk(KERN_ERR "%s: return val: %d \n",
@@ -3086,7 +3231,14 @@ static struct marimba_platform_data marimba_pdata = {
 
 static void __init primou_init_marimba(void)
 {
-
+#if 0
+	vreg_marimba_1 = vreg_get(NULL, "s2");
+	if (IS_ERR(vreg_marimba_1)) {
+		printk(KERN_ERR "%s: vreg get failed (%ld)\n",
+			__func__, PTR_ERR(vreg_marimba_1));
+		return;
+	}
+#endif
 	vreg_marimba_2 = vreg_get(NULL, "gp16");
 	if (IS_ERR(vreg_marimba_2)) {
 		printk(KERN_ERR "%s: vreg get failed (%ld)\n",
@@ -3229,6 +3381,11 @@ struct platform_device msm_aictl_device = {
 	.id   = 0,
 	.num_resources = ARRAY_SIZE(msm_aictl_resources),
 	.resource = msm_aictl_resources,
+};
+
+struct platform_device htc_drm = {
+	.name = "htcdrm",
+	.id = 0,
 };
 
 struct platform_device msm_mi2s_device = {
@@ -3396,6 +3553,79 @@ static struct platform_device msm_device_adspdec = {
 		.platform_data = &msm_device_adspdec_database
 	},
 };
+#if 0
+static struct resource smc91x_resources[] = {
+	[0] = {
+		.start = 0x8A000300,
+		.end = 0x8A0003ff,
+		.flags  = IORESOURCE_MEM,
+	},
+	[1] = {
+		.start = MSM_GPIO_TO_INT(156),
+		.end = MSM_GPIO_TO_INT(156),
+		.flags  = IORESOURCE_IRQ,
+	},
+};
+
+static struct platform_device smc91x_device = {
+	.name           = "smc91x",
+	.id             = 0,
+	.num_resources  = ARRAY_SIZE(smc91x_resources),
+	.resource       = smc91x_resources,
+};
+
+static struct smsc911x_platform_config smsc911x_config = {
+	.phy_interface	= PHY_INTERFACE_MODE_MII,
+	.irq_polarity	= SMSC911X_IRQ_POLARITY_ACTIVE_LOW,
+	.irq_type	= SMSC911X_IRQ_TYPE_PUSH_PULL,
+	.flags		= SMSC911X_USE_32BIT,
+};
+
+static struct resource smsc911x_resources[] = {
+	[0] = {
+		.start		= 0x8D000000,
+		.end		= 0x8D000100,
+		.flags		= IORESOURCE_MEM,
+	},
+	[1] = {
+		.start		= MSM_GPIO_TO_INT(88),
+		.end		= MSM_GPIO_TO_INT(88),
+		.flags		= IORESOURCE_IRQ,
+	},
+};
+
+static struct platform_device smsc911x_device = {
+	.name		= "smsc911x",
+	.id		= -1,
+	.num_resources	= ARRAY_SIZE(smsc911x_resources),
+	.resource	= smsc911x_resources,
+	.dev		= {
+		.platform_data = &smsc911x_config,
+	},
+};
+
+static struct msm_gpio smsc911x_gpios[] = {
+    { GPIO_CFG(172, 2, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), "ebi2_addr6" },
+    { GPIO_CFG(173, 2, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), "ebi2_addr5" },
+    { GPIO_CFG(174, 2, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), "ebi2_addr4" },
+    { GPIO_CFG(175, 2, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), "ebi2_addr3" },
+    { GPIO_CFG(176, 2, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), "ebi2_addr2" },
+    { GPIO_CFG(177, 2, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), "ebi2_addr1" },
+    { GPIO_CFG(178, 2, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), "ebi2_addr0" },
+    { GPIO_CFG(88, 2, GPIO_CFG_INPUT, GPIO_CFG_PULL_UP, GPIO_CFG_2MA), "smsc911x_irq"  },
+};
+
+
+static void msm7x30_cfg_smsc911x(void)
+{
+	int rc;
+
+	rc = msm_gpios_request_enable(smsc911x_gpios,
+			ARRAY_SIZE(smsc911x_gpios));
+	if (rc)
+		pr_err("%s: unable to enable gpios\n", __func__);
+}
+#endif
 
 #ifdef CONFIG_USB_G_ANDROID
 static struct android_usb_platform_data android_usb_pdata = {
@@ -3423,7 +3653,154 @@ static struct platform_device android_usb_device = {
 };
 
 #endif
+#if 0
 
+static struct msm_gpio optnav_config_data[] = {
+	{ GPIO_CFG(OPTNAV_CHIP_SELECT, 0, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_UP, GPIO_CFG_8MA),
+	"optnav_chip_select" },
+};
+
+static void __iomem *virtual_optnav;
+
+static int optnav_gpio_setup(void)
+{
+	int rc = -ENODEV;
+	rc = msm_gpios_request_enable(optnav_config_data,
+			ARRAY_SIZE(optnav_config_data));
+
+	/* Configure the FPGA for GPIOs */
+	virtual_optnav = ioremap(FPGA_OPTNAV_GPIO_ADDR, 0x4);
+	if (!virtual_optnav) {
+		pr_err("%s:Could not ioremap region\n", __func__);
+		return -ENOMEM;
+	}
+	/*
+	 * Configure the FPGA to set GPIO 19 as
+	 * normal, active(enabled), output(MSM to SURF)
+	 */
+	writew(0x311E, virtual_optnav);
+	return rc;
+}
+
+static void optnav_gpio_release(void)
+{
+	msm_gpios_disable_free(optnav_config_data,
+		ARRAY_SIZE(optnav_config_data));
+	iounmap(virtual_optnav);
+}
+
+static struct vreg *vreg_gp7;
+static struct vreg *vreg_gp4;
+static struct vreg *vreg_gp9;
+static struct vreg *vreg_usb3_3;
+
+static int optnav_enable(void)
+{
+	int rc;
+	/*
+	 * Enable the VREGs L8(gp7), L10(gp4), L12(gp9), L6(usb)
+	 * for I2C communication with keyboard.
+	 */
+	vreg_gp7 = vreg_get(NULL, "gp7");
+	rc = vreg_set_level(vreg_gp7, 1800);
+	if (rc) {
+		pr_err("%s: vreg_set_level failed \n", __func__);
+		goto fail_vreg_gp7;
+	}
+
+	rc = vreg_enable(vreg_gp7);
+	if (rc) {
+		pr_err("%s: vreg_enable failed \n", __func__);
+		goto fail_vreg_gp7;
+	}
+
+	vreg_gp4 = vreg_get(NULL, "gp4");
+	rc = vreg_set_level(vreg_gp4, 2600);
+	if (rc) {
+		pr_err("%s: vreg_set_level failed \n", __func__);
+		goto fail_vreg_gp4;
+	}
+
+	rc = vreg_enable(vreg_gp4);
+	if (rc) {
+		pr_err("%s: vreg_enable failed \n", __func__);
+		goto fail_vreg_gp4;
+	}
+
+	vreg_gp9 = vreg_get(NULL, "gp9");
+	rc = vreg_set_level(vreg_gp9, 1800);
+	if (rc) {
+		pr_err("%s: vreg_set_level failed \n", __func__);
+		goto fail_vreg_gp9;
+	}
+
+	rc = vreg_enable(vreg_gp9);
+	if (rc) {
+		pr_err("%s: vreg_enable failed \n", __func__);
+		goto fail_vreg_gp9;
+	}
+
+	vreg_usb3_3 = vreg_get(NULL, "usb");
+	rc = vreg_set_level(vreg_usb3_3, 3300);
+	if (rc) {
+		pr_err("%s: vreg_set_level failed \n", __func__);
+		goto fail_vreg_3_3;
+	}
+
+	rc = vreg_enable(vreg_usb3_3);
+	if (rc) {
+		pr_err("%s: vreg_enable failed \n", __func__);
+		goto fail_vreg_3_3;
+	}
+
+	/* Enable the chip select GPIO */
+	gpio_set_value(OPTNAV_CHIP_SELECT, 1);
+	gpio_set_value(OPTNAV_CHIP_SELECT, 0);
+
+	return 0;
+
+fail_vreg_3_3:
+	vreg_disable(vreg_gp9);
+fail_vreg_gp9:
+	vreg_disable(vreg_gp4);
+fail_vreg_gp4:
+	vreg_disable(vreg_gp7);
+fail_vreg_gp7:
+	return rc;
+}
+
+static void optnav_disable(void)
+{
+	vreg_disable(vreg_usb3_3);
+	vreg_disable(vreg_gp9);
+	vreg_disable(vreg_gp4);
+	vreg_disable(vreg_gp7);
+
+	gpio_set_value(OPTNAV_CHIP_SELECT, 1);
+}
+
+static struct ofn_atlab_platform_data optnav_data = {
+	.gpio_setup    = optnav_gpio_setup,
+	.gpio_release  = optnav_gpio_release,
+	.optnav_on     = optnav_enable,
+	.optnav_off    = optnav_disable,
+	.rotate_xy     = 0,
+	.function1 = {
+		.no_motion1_en		= true,
+		.touch_sensor_en	= true,
+		.ofn_en			= true,
+		.clock_select_khz	= 1500,
+		.cpi_selection		= 1200,
+	},
+	.function2 =  {
+		.invert_y		= false,
+		.invert_x		= true,
+		.swap_x_y		= false,
+		.hold_a_b_en		= true,
+		.motion_filter_en       = true,
+	},
+};
+#endif
 #ifdef CONFIG_BOSCH_BMA150
 static struct vreg *vreg_gp6;
 static int sensors_ldo_enable(void)
@@ -3497,6 +3874,17 @@ static struct bma150_platform_data bma150_data = {
 	.power_on = sensors_ldo_enable,
 	.power_off = sensors_ldo_disable,
 };
+
+/*
+static struct i2c_board_info bma150_board_info[] __initdata = {
+	{
+		I2C_BOARD_INFO("bma150", 0x38),
+		.flags = I2C_CLIENT_WAKE,
+		.irq = MSM_GPIO_TO_INT(BMA150_GPIO_INT),
+		.platform_data = &bma150_data,
+	},
+};
+*/
 #endif
 
 static struct bma250_platform_data gsensor_bma250_platform_data = {
@@ -3514,6 +3902,15 @@ static struct i2c_board_info i2c_bma250_devices[] = {
 	},
 };
 
+/*
+static struct i2c_board_info msm_i2c_board_info[] = {
+	{
+		I2C_BOARD_INFO("m33c01", OPTNAV_I2C_SLAVE_ADDR),
+		.irq		= MSM_GPIO_TO_INT(OPTNAV_IRQ),
+		.platform_data = &optnav_data,
+	},
+};
+*/
 static struct i2c_board_info msm_marimba_board_info[] = {
 	{
 		I2C_BOARD_INFO("marimba", 0xc),
@@ -3560,6 +3957,16 @@ static struct msm_pm_platform_data msm_pm_data[MSM_PM_SLEEP_MODE_NR] = {
 		.latency = 8594,
 		.residency = 23740,
 	},
+/*
+	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE_NO_XO_SHUTDOWN] = {
+		.idle_supported = 1,
+		.suspend_supported = 1,
+		.idle_enabled = 1,
+		.suspend_enabled = 1,
+		.latency = 4594,
+		.residency = 23740,
+	},
+*/
 	[MSM_PM_SLEEP_MODE_POWER_COLLAPSE_STANDALONE] = {
 #ifdef CONFIG_MSM_STANDALONE_POWER_COLLAPSE
 		.idle_supported = 1,
@@ -4523,6 +4930,11 @@ static struct platform_device *devices[] __initdata = {
 #endif
         &msm_device_smd,
         &msm_device_dmov,
+#if 0
+        &smc91x_device,
+        &smsc911x_device,
+        &msm_device_nand,
+#endif
         &msm_device_otg,
         &qsd_device_spi,
 #ifdef CONFIG_MSM_SSBI
@@ -4604,6 +5016,114 @@ static struct platform_device *devices[] __initdata = {
         &pm8058_leds,
         &cable_detect_device,
         &htc_headset_mgr,
+        &htc_drm,
+};
+
+static struct platform_device *devices_CH[] __initdata = {
+#if defined(CONFIG_SERIAL_MSM) || defined(CONFIG_MSM_SERIAL_DEBUGGER)
+	&msm_device_uart2,
+#endif
+#ifdef CONFIG_MSM_PROC_COMM_REGULATOR
+	&msm_proccomm_regulator_dev,
+#endif
+	&asoc_msm_pcm,
+	&asoc_msm_dai0,
+	&asoc_msm_dai1,
+#if defined(CONFIG_SND_MSM_MVS_DAI_SOC)
+	&asoc_msm_mvs,
+	&asoc_mvs_dai0,
+	&asoc_mvs_dai1,
+#endif
+	&msm_device_smd,
+	&msm_device_dmov,
+#if 0
+	&smc91x_device,
+	&smsc911x_device,
+	&msm_device_nand,
+#endif
+	&msm_device_otg,
+	&qsd_device_spi,
+#ifdef CONFIG_MSM_SSBI
+	&msm_device_ssbi_pmic1,
+#endif
+#ifdef CONFIG_I2C_SSBI
+	/*&msm_device_ssbi6,*/
+	&msm_device_ssbi7,
+#endif
+	&android_pmem_device,
+	&msm_migrate_pages_device,
+#ifdef CONFIG_MSM_ROTATOR
+	&msm_rotator_device,
+#endif
+	&android_pmem_adsp_device,
+	&android_pmem_adsp2_device,
+	&android_pmem_audio_device,
+	&msm_device_i2c,
+	&msm_device_i2c_2,
+	&hs_device,
+#ifdef CONFIG_MSM7KV2_AUDIO
+	&msm_aictl_device,
+	&msm_mi2s_device,
+	&msm_lpa_device,
+	&msm_aux_pcm_device,
+#endif
+
+#ifdef CONFIG_RAWCHIP
+       &msm_rawchip_device,
+#endif
+
+#ifdef CONFIG_S5K4E5YX
+	&msm_camera_sensor_s5k4e5yx,
+#endif
+
+	&msm_device_adspdec,
+	&qup_device_i2c,
+
+	&msm_kgsl_3d0,
+	&msm_kgsl_2d0,
+	&msm_device_vidc_720p,
+#ifdef CONFIG_MSM_GEMINI
+	&msm_gemini_device,
+#endif
+#ifdef CONFIG_MSM_VPE
+	&msm_vpe_device,
+#endif
+#if defined(CONFIG_TSIF) || defined(CONFIG_TSIF_MODULE)
+	&msm_device_tsif,
+#endif
+#ifdef CONFIG_MSM_SDIO_AL
+	/* &msm_device_sdio_al, */
+#endif
+
+#if defined(CONFIG_CRYPTO_DEV_QCRYPTO) || \
+		defined(CONFIG_CRYPTO_DEV_QCRYPTO_MODULE)
+	&qcrypto_device,
+#endif
+
+#if defined(CONFIG_CRYPTO_DEV_QCEDEV) || \
+		defined(CONFIG_CRYPTO_DEV_QCEDEV_MODULE)
+	&qcedev_device,
+#endif
+
+	&htc_battery_pdev,
+	&msm_adc_device,
+	&msm_ebi0_thermal,
+	&msm_ebi1_thermal,
+#ifdef CONFIG_SERIAL_BCM_BT_LPM
+	&bcm_bt_lpm_device,
+#endif
+#if defined(CONFIG_SERIAL_MSM_HS) || defined(CONFIG_SERIAL_MSM_HS_LPM)
+	&msm_device_uart_dm1,
+#endif
+#ifdef CONFIG_BT
+	&primou_rfkill,
+#endif
+
+
+	&pm8058_leds_CH,
+	&cable_detect_device,
+	&htc_headset_mgr,
+	&htc_drm,
 };
 
 static struct msm_gpio msm_i2c_gpios_hw[] = {
@@ -4711,6 +5231,9 @@ static struct msm_i2c_platform_data qup_i2c_pdata = {
 
 static void __init qup_device_i2c_init(void)
 {
+	/* Remove the gpio_request due to i2c-qup.c is done so. */
+	/*if (msm_gpios_request(qup_i2c_gpios_hw, ARRAY_SIZE(qup_i2c_gpios_hw)))
+		pr_err("failed to request I2C gpios\n");*/
 
 	qup_device_i2c.dev.platform_data = &qup_i2c_pdata;
 	/*This needs to be enabled only for OEMS*/
@@ -4724,6 +5247,11 @@ static void __init qup_device_i2c_init(void)
 }
 
 #ifdef CONFIG_I2C_SSBI
+/*
+static struct msm_i2c_ssbi_platform_data msm_i2c_ssbi6_pdata = {
+	.rsl_id = "D:PMIC_SSBI",
+	.controller_type = MSM_SBI_CTRL_SSBI2,
+};*/
 
 static struct msm_i2c_ssbi_platform_data msm_i2c_ssbi7_pdata = {
 	.rsl_id = "D:CODEC_SSBI",
@@ -4735,7 +5263,12 @@ static void __init primou_init_irq(void)
 {
 	msm_init_irq();
 }
-
+#if 0
+static struct msm_gpio msm_nand_ebi2_cfg_data[] = {
+	{GPIO_CFG(86, 1, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_UP, GPIO_CFG_8MA), "ebi2_cs1"},
+	{GPIO_CFG(115, 2, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_UP, GPIO_CFG_8MA), "ebi2_busy1"},
+};
+#endif
 struct vreg *vreg_s3;
 struct vreg *vreg_mmc;
 
@@ -4962,6 +5495,11 @@ out:
 
 #define MBP_RESET_N \
 	GPIO_CFG(44, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_8MA)
+#if 0 /* 46 is power key GPIO */
+#define MBP_INT0 \
+	GPIO_CFG(46, 0, GPIO_CFG_INPUT, GPIO_CFG_PULL_UP, GPIO_CFG_8MA)
+#endif
+
 #define MBP_MODE_CTRL_0 \
 	GPIO_CFG(35, 0, GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL, GPIO_CFG_2MA)
 #define MBP_MODE_CTRL_1 \
@@ -5051,7 +5589,56 @@ static int mbp_setup_rf_vregs(int state)
 }
 
 static int mbp_setup_vregs(int state)
-{
+{/*
+	struct vreg *vreg_analog = NULL;
+	struct vreg *vreg_io = NULL;
+	int rc;
+
+	vreg_analog = vreg_get(NULL, "gp4");
+	if (IS_ERR(vreg_analog)) {
+		pr_err("%s: gp4 vreg get failed (%ld)",
+				__func__, PTR_ERR(vreg_analog));
+		return -EFAULT;
+	}
+	vreg_io = vreg_get(NULL, "s3");
+	if (IS_ERR(vreg_io)) {
+		pr_err("%s: s3 vreg get failed (%ld)",
+				__func__, PTR_ERR(vreg_io));
+		return -EFAULT;
+	}
+	if (state) {
+		rc = vreg_set_level(vreg_analog, 2600);
+		if (rc) {
+			pr_err("%s: vreg_set_level failed (%d)",
+					__func__, rc);
+		}
+		rc = vreg_enable(vreg_analog);
+		if (rc) {
+			pr_err("%s: analog vreg enable failed (%d)",
+					__func__, rc);
+		}
+		rc = vreg_set_level(vreg_io, 1800);
+		if (rc) {
+			pr_err("%s: vreg_set_level failed (%d)",
+					__func__, rc);
+		}
+		rc = vreg_enable(vreg_io);
+		if (rc) {
+			pr_err("%s: io vreg enable failed (%d)",
+					__func__, rc);
+		}
+	} else {
+		rc = vreg_disable(vreg_analog);
+		if (rc) {
+			pr_err("%s: analog vreg disable failed (%d)",
+					__func__, rc);
+		}
+		rc = vreg_disable(vreg_io);
+		if (rc) {
+			pr_err("%s: io vreg disable failed (%d)",
+					__func__, rc);
+		}
+	}*/
 	return rc;
 }
 
@@ -5070,6 +5657,14 @@ static int mbp_set_tcxo_en(int enable)
 	}
 	if (!enable) {
 		vreg_analog = vreg_get(NULL, "gp4");
+		/*
+		if (IS_ERR(vreg_analog)) {
+			pr_err("%s: gp4 vreg get failed (%ld)",
+					__func__, PTR_ERR(vreg_analog));
+			return -EFAULT;
+		}
+
+		(void) vreg_disable(vreg_analog);*/
 	}
 	return rc;
 }
@@ -5442,6 +6037,27 @@ static struct mmc_platform_data msm7x30_sdc2_data = {
 };
 #endif
 
+#ifdef CONFIG_MMC_MSM_SDC3_SUPPORT
+/* HTC_WIFI_START */
+/*
+static unsigned int primou_sdc3_slot_type = MMC_TYPE_SDIO_WIFI;
+static struct mmc_platform_data msm7x30_sdc3_data = {
+	.ocr_mask	= MMC_VDD_27_28 | MMC_VDD_28_29,
+	.translate_vdd	= msm_sdcc_setup_power,
+	.mmc_bus_width  = MMC_CAP_4_BIT_DATA,
+#ifdef CONFIG_MMC_MSM_SDIO_SUPPORT
+	.sdiowakeup_irq = MSM_GPIO_TO_INT(118),
+#endif
+	.msmsdcc_fmin	= 144000,
+	.msmsdcc_fmid	= 24576000,
+	.msmsdcc_fmax	= 49152000,
+	.slot_type		= &primou_sdc3_slot_type,
+	.nonremovable	= 0,
+};
+*/
+/* HTC_WIFI_END */
+#endif
+
 #ifdef CONFIG_MMC_MSM_SDC4_SUPPORT
 static unsigned int primou_sdc4_slot_type = MMC_TYPE_SD;
 static struct mmc_platform_data msm7x30_sdc4_data = {
@@ -5530,7 +6146,13 @@ static void __init msm7x30_init_mmc(void)
 #ifdef CONFIG_MMC_MSM_SDC3_SUPPORT
 	sdcc_vreg_data[2].vreg_data = vreg_s3;
 	sdcc_vreg_data[2].level = 1800;
+/* HTC_WIFI_START */
+	/*
+	msm_sdcc_setup_gpio(3, 1);
+	msm_add_sdcc(3, &msm7x30_sdc3_data);
+	*/
 	primou_init_mmc(system_rev);
+/* HTC_WIFI_END*/
 #endif
 #ifdef CONFIG_MMC_MSM_SDC4_SUPPORT
 	sdcc_vreg_data[3].vreg_data = vreg_mmc;
@@ -5539,6 +6161,28 @@ static void __init msm7x30_init_mmc(void)
 #endif
 
 }
+#if 0
+static void __init msm7x30_init_nand(void)
+{
+	char *build_id;
+	struct flash_platform_data *plat_data;
+
+	build_id = socinfo_get_build_id();
+	if (build_id == NULL) {
+		pr_err("%s: Build ID not available from socinfo\n", __func__);
+		return;
+	}
+
+	if (build_id[8] == 'C' &&
+			!msm_gpios_request_enable(msm_nand_ebi2_cfg_data,
+			ARRAY_SIZE(msm_nand_ebi2_cfg_data))) {
+		plat_data = msm_device_nand.dev.platform_data;
+		plat_data->interleave = 1;
+		printk(KERN_INFO "%s: Interleave mode Build ID found\n",
+			__func__);
+	}
+}
+#endif
 
 /* TSIF begin */
 #if defined(CONFIG_TSIF) || defined(CONFIG_TSIF_MODULE)
@@ -5599,7 +6243,167 @@ static struct msm_spm_platform_data msm_spm_data __initdata = {
 	.vctl_timeout_us = 50,
 };
 
+#if 0 /* disable isa1200*/
+static const char *vregs_isa1200_name[] = {
+	"gp7",
+	"gp10",
+};
 
+static const int vregs_isa1200_val[] = {
+	1800,
+	2600,
+};
+static struct vreg *vregs_isa1200[ARRAY_SIZE(vregs_isa1200_name)];
+
+static int isa1200_power(int vreg_on)
+{
+	int i, rc = 0;
+
+	for (i = 0; i < ARRAY_SIZE(vregs_isa1200_name); i++) {
+		if (!vregs_isa1200[i]) {
+			pr_err("%s: vreg_get %s failed (%d)\n",
+				__func__, vregs_isa1200_name[i], rc);
+			goto vreg_fail;
+		}
+
+		rc = vreg_on ? vreg_enable(vregs_isa1200[i]) :
+			  vreg_disable(vregs_isa1200[i]);
+		if (rc < 0) {
+			pr_err("%s: vreg %s %s failed (%d)\n",
+				__func__, vregs_isa1200_name[i],
+			       vreg_on ? "enable" : "disable", rc);
+			goto vreg_fail;
+		}
+	}
+
+	/* vote for DO buffer */
+	rc = pmapp_clock_vote("VIBR", PMAPP_CLOCK_ID_DO,
+		vreg_on ? PMAPP_CLOCK_VOTE_ON : PMAPP_CLOCK_VOTE_OFF);
+	if (rc)	{
+		pr_err("%s: unable to %svote for d0 clk\n",
+			__func__, vreg_on ? "" : "de-");
+		goto vreg_fail;
+	}
+
+	return 0;
+
+vreg_fail:
+	while (i)
+		vreg_disable(vregs_isa1200[--i]);
+	return rc;
+}
+
+static int isa1200_dev_setup(bool enable)
+{
+	int i, rc;
+
+	if (enable == true) {
+		for (i = 0; i < ARRAY_SIZE(vregs_isa1200_name); i++) {
+			vregs_isa1200[i] = vreg_get(NULL,
+						vregs_isa1200_name[i]);
+			if (IS_ERR(vregs_isa1200[i])) {
+				pr_err("%s: vreg get %s failed (%ld)\n",
+					__func__, vregs_isa1200_name[i],
+					PTR_ERR(vregs_isa1200[i]));
+				rc = PTR_ERR(vregs_isa1200[i]);
+				goto vreg_get_fail;
+			}
+			rc = vreg_set_level(vregs_isa1200[i],
+					vregs_isa1200_val[i]);
+			if (rc) {
+				pr_err("%s: vreg_set_level() = %d\n",
+					__func__, rc);
+				goto vreg_get_fail;
+			}
+		}
+
+		rc = gpio_tlmm_config(GPIO_CFG(HAP_LVL_SHFT_MSM_GPIO, 0,
+				GPIO_CFG_OUTPUT, GPIO_CFG_NO_PULL,
+				GPIO_CFG_2MA), GPIO_CFG_ENABLE);
+		if (rc) {
+			pr_err("%s: Could not configure gpio %d\n",
+					__func__, HAP_LVL_SHFT_MSM_GPIO);
+			goto vreg_get_fail;
+		}
+
+		rc = gpio_request(HAP_LVL_SHFT_MSM_GPIO, "haptics_shft_lvl_oe");
+		if (rc) {
+			pr_err("%s: unable to request gpio %d (%d)\n",
+					__func__, HAP_LVL_SHFT_MSM_GPIO, rc);
+			goto vreg_get_fail;
+		}
+
+		gpio_set_value(HAP_LVL_SHFT_MSM_GPIO, 1);
+	} else {
+		for (i = 0; i < ARRAY_SIZE(vregs_isa1200_name); i++)
+			vreg_put(vregs_isa1200[i]);
+
+		gpio_free(HAP_LVL_SHFT_MSM_GPIO);
+	}
+
+	return 0;
+vreg_get_fail:
+	while (i)
+		vreg_put(vregs_isa1200[--i]);
+	return rc;
+}
+
+static struct isa1200_platform_data isa1200_1_pdata = {
+	.name = "vibrator",
+	.power_on = isa1200_power,
+	.dev_setup = isa1200_dev_setup,
+	.pwm_ch_id = 1, /*channel id*/
+	/*gpio to enable haptic*/
+	.hap_en_gpio = PM8058_GPIO_PM_TO_SYS(PMIC_GPIO_HAP_ENABLE),
+	.max_timeout = 15000,
+	.mode_ctrl = PWM_GEN_MODE,
+	.pwm_fd = {
+		.pwm_div = 256,
+	},
+	.is_erm = false,
+	.smart_en = true,
+	.ext_clk_en = true,
+	.chip_en = 1,
+};
+
+static struct i2c_board_info msm_isa1200_board_info[] = {
+	{
+		I2C_BOARD_INFO("isa1200_1", 0x90>>1),
+		.platform_data = &isa1200_1_pdata,
+	},
+};
+#endif
+/*
+static int kp_flip_mpp_config(void)
+{
+	struct pm8xxx_mpp_config_data kp_flip_mpp = {
+		.type = PM8XXX_MPP_TYPE_D_INPUT,
+		.level = PM8018_MPP_DIG_LEVEL_S3,
+		.control = PM8XXX_MPP_DIN_TO_INT,
+	};
+
+	return pm8xxx_mpp_config(PM8058_MPP_PM_TO_SYS(PM_FLIP_MPP),
+						&kp_flip_mpp);
+}
+
+static struct flip_switch_pdata flip_switch_data = {
+	.name = "kp_flip_switch",
+	.flip_gpio = PM8058_GPIO_PM_TO_SYS(PM8058_GPIOS) + PM_FLIP_MPP,
+	.left_key = KEY_OPEN,
+	.right_key = KEY_CLOSE,
+	.active_low = 0,
+	.wakeup = 1,
+	.flip_mpp_config = kp_flip_mpp_config,
+};
+
+static struct platform_device flip_switch_device = {
+	.name   = "kp_flip_switch",
+	.id	= -1,
+	.dev    = {
+		.platform_data = &flip_switch_data,
+	}
+};
+*/
 static void primou_reset(void)
 {
 	gpio_set_value(PRIMOU_GPIO_PS_HOLD, 0);
@@ -5720,8 +6524,12 @@ static void __init primou_init(void)
 		pm_led_config[0].out_current = 40;
 		htc_headset_mgr_config[0].adc_max = 65535;
 	}
-
-	platform_add_devices(devices, ARRAY_SIZE(devices));
+        device_mid = get_model_id();
+	if (strstr(device_mid, "PK7612")) {
+		platform_add_devices(devices_CH, ARRAY_SIZE(devices_CH));
+	} else {
+		platform_add_devices(devices, ARRAY_SIZE(devices));
+	}
 
 	/*usb driver won't be loaded in MFG 58 station and gift mode*/
 	if (!(board_mfg_mode() == 6 || board_mfg_mode() == 7))
@@ -5755,7 +6563,14 @@ static void __init primou_init(void)
 	ARRAY_SIZE(primou_flashlight));
 
 #endif
+	/* i2c_register_board_info(0, msm_i2c_board_info,
+			ARRAY_SIZE(msm_i2c_board_info)); */
 	i2c_register_board_info(0, i2c_tps_devices, ARRAY_SIZE(i2c_tps_devices));
+#if 0
+
+	if (!machine_is_msm8x55_svlte_ffa() && !machine_is_msm7x30_fluid())
+		marimba_pdata.tsadc = &marimba_tsadc_pdata;
+#endif
 
 #ifdef CONFIG_BOSCH_BMA150
 	if (machine_is_msm7x30_fluid())
@@ -5782,8 +6597,16 @@ static void __init primou_init(void)
 
 	/*bt_power_init();*/
 #ifdef CONFIG_I2C_SSBI
+	/*msm_device_ssbi6.dev.platform_data = &msm_i2c_ssbi6_pdata;*/
 	msm_device_ssbi7.dev.platform_data = &msm_i2c_ssbi7_pdata;
 #endif
+/*
+	if (machine_is_msm7x30_fluid())
+		i2c_register_board_info(0, msm_isa1200_board_info,
+			ARRAY_SIZE(msm_isa1200_board_info));
+	if (machine_is_msm7x30_surf())
+		platform_device_register(&flip_switch_device);
+*/
 	pm8058_gpios_init();
 
 	entry = create_proc_read_entry("emmc", 0, NULL, emmc_partition_read_proc, NULL);
@@ -5809,7 +6632,10 @@ static void __init primou_init(void)
 
 	i2c_register_board_info(0, i2c_devices,
 				ARRAY_SIZE(i2c_devices));
-
+/*
+	i2c_register_board_info(0, i2c_Sensors_devices,
+				ARRAY_SIZE(i2c_Sensors_devices));
+*/
 	device_mid = get_model_id();
 	if (strstr(device_mid, "PK7612")) {
 		if (1 == board_mfg_mode()) {
