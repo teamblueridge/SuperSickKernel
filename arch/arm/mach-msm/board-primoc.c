@@ -3390,6 +3390,11 @@ static struct platform_device primoc_timed_gpios = {
        },
 };
 
+struct platform_device htc_drm = {
+	.name = "htcdrm",
+	.id = 0,
+};
+
 static struct platform_device *devices[] __initdata = {
 #if defined(CONFIG_SERIAL_MSM) || defined(CONFIG_MSM_SERIAL_DEBUGGER)
 	&msm_device_uart2,
@@ -3407,9 +3412,7 @@ static struct platform_device *devices[] __initdata = {
 #endif
 	&msm_device_smd,
 	&msm_device_dmov,
-#ifdef CONFIG_USB_MSM_OTG_72K
 	&msm_device_otg,
-#endif
 	&qsd_device_spi,
 #ifdef CONFIG_MSM_SSBI
 	&msm_device_ssbi_pmic1,
@@ -3495,6 +3498,7 @@ static struct platform_device *devices[] __initdata = {
 #endif
 	&primoc_timed_gpios,
 	&cable_detect_device,
+	&htc_drm,
 };
 
 static struct msm_gpio msm_i2c_gpios_hw[] = {
