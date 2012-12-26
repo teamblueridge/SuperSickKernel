@@ -5066,9 +5066,9 @@ static void fix_sizes(void)
 #endif
 }
 
+#ifdef CONFIG_ANDROID_PMEM
 static void __init size_pmem_device(struct android_pmem_platform_data *pdata, unsigned long start, unsigned long size)
 {
-#ifdef CONFIG_ANDROID_PMEM
 	pdata->start = start;
 	pdata->size = size;
 	if (pdata->start)
@@ -5077,8 +5077,8 @@ static void __init size_pmem_device(struct android_pmem_platform_data *pdata, un
 	else
 		pr_info("%s: pmem %s requests %lu bytes dynamically.\r\n",
 			__func__, pdata->name, size);
-#endif
 }
+#endif
 
 static void __init size_pmem_devices(void)
 {
