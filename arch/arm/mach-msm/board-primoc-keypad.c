@@ -1,6 +1,6 @@
 /* linux/arch/arm/mach-msm/board-primoc-keypad.c
  *
- * Copyright (C) 2010-2011 HTC Corporation.
+ * Copyright (C) 2010-2012 HTC Corporation.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and

@@ -238,14 +238,6 @@ void primou_snddev_imic_pamp_on(int en)
 void primou_snddev_emic_pamp_on(int en)
 {
 	pr_aud_info("%s %d\n", __func__, en);
-#if 0
-	if (en)
-		gpio_request(PM8058_GPIO_PM_TO_SYS(PRIMOU_AUD_CODEC_EN), "aud_2v85_en");
-		gpio_direction_output(PM8058_GPIO_PM_TO_SYS(PRIMOU_AUD_CODEC_EN), 1);
-		gpio_set_value(PRIMOU_AUD_CODEC_EN, 1);
-	else
-		gpio_set_value(PRIMOU_AUD_CODEC_EN, 0);
-#endif
 }
 
 int primou_get_rx_vol(uint8_t hw, int network, int level)
@@ -327,20 +319,7 @@ static void audio_work_func(struct work_struct *work)
 
 void primou_enable_beats(int en)
 {
-#if 0
-	pr_aud_info("%s: %d\n", __func__, en);
-	if (!audio_wq) {
-		pr_aud_info("%s: non-wq case\n", __func__);
-		if (en)
-			adie_codec_set_device_analog_volume(NULL, 2, 0x04);
-		else
-			adie_codec_set_device_analog_volume(NULL, 2, 0x14);
-	} else {
-		pr_aud_info("%s: wq case\n", __func__);
-		atomic_set(&beats_enabled, en);
-		queue_work(audio_wq, &audio_work);
-	}
-#endif
+	printk("Enable Beats by Dre ... Wait, why is this in AOSP \n");
 }
 
 static struct q5v2audio_icodec_ops iops = {

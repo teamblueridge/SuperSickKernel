@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2009 Google, Inc.
- * Copyright (C) 2009-2011 HTC Corporation.
+ * Copyright (C) 2009-2012 HTC Corporation.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -231,8 +231,6 @@ static int primoc_rfkill_probe(struct platform_device *pdev)
 	int rc = 0;
 	bool default_state = true;  /* off */
 
-	/* always turn on clock? */
-	/* htc_wifi_bt_sleep_clk_ctl(CLK_ON, ID_BT); */
 	mdelay(2);
 
 	bluetooth_set_power(NULL, default_state);
@@ -245,8 +243,6 @@ static int primoc_rfkill_probe(struct platform_device *pdev)
 	}
 
 	rfkill_set_states(bt_rfk, default_state, false);
-
-	/* userspace cannot take exclusive control */
 
 	rc = rfkill_register(bt_rfk);
 	if (rc)
@@ -292,5 +288,5 @@ static void __exit primoc_rfkill_exit(void)
 module_init(primoc_rfkill_init);
 module_exit(primoc_rfkill_exit);
 MODULE_DESCRIPTION("primoc rfkill");
-MODULE_AUTHOR("htc_ssdbt <htc_ssdbt@htc.com>");
-MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Simon Sickle <simon@simonsickle.com>");
+MODULE_LICENSE("GPLv2");

@@ -1,6 +1,6 @@
 /* linux/arch/arm/mach-msm/board-primoc-audio.c
  *
- * Copyright (C) 2010-2011 HTC Corporation.
+ * Copyright (C) 2010-2012 HTC Corporation.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -388,18 +388,7 @@ static void audio_work_func(struct work_struct *work)
 
 void primoc_enable_beats(int en)
 {
-#if 0
-	pr_aud_info("%s: %d\n", __func__, en);
-	if (!audio_wq) {
-		if (en)
-			adie_codec_set_device_analog_volume(NULL, 2, 0x04);
-		else
-			adie_codec_set_device_analog_volume(NULL, 2, 0x14);
-	} else {
-		atomic_set(&beats_enabled, en);
-		queue_work(audio_wq, &audio_work);
-	}
-#endif
+	printk("Enable Beats by Dre... Wait why is this in AOSP");
 }
 
 static struct q5v2audio_icodec_ops iops = {

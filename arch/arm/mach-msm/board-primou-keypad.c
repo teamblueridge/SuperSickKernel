@@ -89,12 +89,7 @@ static struct platform_device primou_keypad_input_device = {
 		.platform_data	= &primou_keypad_data,
 	},
 };
-/*
-static int primou_reset_keys_up[] = {
-	KEY_VOLUMEUP,
-	0
-};
-*/
+
 static struct keyreset_platform_data primou_reset_keys_pdata = {
 	/*.keys_up = primou_reset_keys_up,*/
 	.keys_down = {
