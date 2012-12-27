@@ -113,6 +113,13 @@
 #include <mach/bcm_bt_lpm.h>
 #endif
 
+#ifdef CONFIG_ION_MSM
+static struct platform_device ion_dev;
+#define MSM_ION_AUDIO_SIZE	MSM_PMEM_AUDIO_SIZE
+#define MSM_ION_SF_SIZE		MSM_PMEM_SF_SIZE
+#define MSM_ION_HEAP_NUM	4
+#endif
+
 #define GPIO_2MA       0
 #define PMIC_VREG_WLAN_LEVEL	2900
 
@@ -128,12 +135,6 @@
 #define PM8058_GPIO_SYS_TO_PM(sys_gpio)    (sys_gpio - NR_GPIO_IRQS)
 #define PM8058_MPP_BASE			   PM8058_GPIO_PM_TO_SYS(PM8058_GPIOS)
 #define PM8058_MPP_PM_TO_SYS(pm_gpio)	   (pm_gpio + PM8058_MPP_BASE)
-
-#if 0
-#define PMIC_GPIO_WLAN_EXT_POR  22 /* PMIC GPIO 23 is volume up GPIO */
-#define BMA150_GPIO_INT 1
-#define HAP_LVL_SHFT_MSM_GPIO 24
-#endif
 
 int htc_get_usb_accessory_adc_level(uint32_t *buffer);
 #include <mach/cable_detect.h>
@@ -3553,79 +3554,6 @@ static struct platform_device msm_device_adspdec = {
 		.platform_data = &msm_device_adspdec_database
 	},
 };
-#if 0
-static struct resource smc91x_resources[] = {
-	[0] = {
-		.start = 0x8A000300,
-		.end = 0x8A0003ff,
-		.flags  = IORESOURCE_MEM,
-	},
-	[1] = {
-		.start = MSM_GPIO_TO_INT(156),
-		.end = MSM_GPIO_TO_INT(156),
-		.flags  = IORESOURCE_IRQ,
-	},
-};
-
-static struct platform_device smc91x_device = {
-	.name           = "smc91x",
-	.id             = 0,
-	.num_resources  = ARRAY_SIZE(smc91x_resources),
-	.resource       = smc91x_resources,
-};
-
-static struct smsc911x_platform_config smsc911x_config = {
-	.phy_interface	= PHY_INTERFACE_MODE_MII,
-	.irq_polarity	= SMSC911X_IRQ_POLARITY_ACTIVE_LOW,
-	.irq_type	= SMSC911X_IRQ_TYPE_PUSH_PULL,
-	.flags		= SMSC911X_USE_32BIT,
-};
-
-static struct resource smsc911x_resources[] = {
-	[0] = {
-		.start		= 0x8D000000,
-		.end		= 0x8D000100,
-		.flags		= IORESOURCE_MEM,
-	},
-	[1] = {
-		.start		= MSM_GPIO_TO_INT(88),
-		.end		= MSM_GPIO_TO_INT(88),
-		.flags		= IORESOURCE_IRQ,
-	},
-};
-
-static struct platform_device smsc911x_device = {
-	.name		= "smsc911x",
-	.id		= -1,
-	.num_resources	= ARRAY_SIZE(smsc911x_resources),
-	.resource	= smsc911x_resources,
-	.dev		= {
-		.platform_data = &smsc911x_config,
-	},
-};
-
-static struct msm_gpio smsc911x_gpios[] = {
-    { GPIO_CFG(172, 2, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), "ebi2_addr6" },
-    { GPIO_CFG(173, 2, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), "ebi2_addr5" },
-    { GPIO_CFG(174, 2, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), "ebi2_addr4" },
-    { GPIO_CFG(175, 2, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), "ebi2_addr3" },
-    { GPIO_CFG(176, 2, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), "ebi2_addr2" },
-    { GPIO_CFG(177, 2, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), "ebi2_addr1" },
-    { GPIO_CFG(178, 2, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA), "ebi2_addr0" },
-    { GPIO_CFG(88, 2, GPIO_CFG_INPUT, GPIO_CFG_PULL_UP, GPIO_CFG_2MA), "smsc911x_irq"  },
-};
-
-
-static void msm7x30_cfg_smsc911x(void)
-{
-	int rc;
-
-	rc = msm_gpios_request_enable(smsc911x_gpios,
-			ARRAY_SIZE(smsc911x_gpios));
-	if (rc)
-		pr_err("%s: unable to enable gpios\n", __func__);
-}
-#endif
 
 #ifdef CONFIG_USB_G_ANDROID
 static struct android_usb_platform_data android_usb_pdata = {
@@ -3652,154 +3580,6 @@ static struct platform_device android_usb_device = {
 	},
 };
 
-#endif
-#if 0
-
-static struct msm_gpio optnav_config_data[] = {
-	{ GPIO_CFG(OPTNAV_CHIP_SELECT, 0, GPIO_CFG_OUTPUT, GPIO_CFG_PULL_UP, GPIO_CFG_8MA),
-	"optnav_chip_select" },
-};
-
-static void __iomem *virtual_optnav;
-
-static int optnav_gpio_setup(void)
-{
-	int rc = -ENODEV;
-	rc = msm_gpios_request_enable(optnav_config_data,
-			ARRAY_SIZE(optnav_config_data));
-
-	/* Configure the FPGA for GPIOs */
-	virtual_optnav = ioremap(FPGA_OPTNAV_GPIO_ADDR, 0x4);
-	if (!virtual_optnav) {
-		pr_err("%s:Could not ioremap region\n", __func__);
-		return -ENOMEM;
-	}
-	/*
-	 * Configure the FPGA to set GPIO 19 as
-	 * normal, active(enabled), output(MSM to SURF)
-	 */
-	writew(0x311E, virtual_optnav);
-	return rc;
-}
-
-static void optnav_gpio_release(void)
-{
-	msm_gpios_disable_free(optnav_config_data,
-		ARRAY_SIZE(optnav_config_data));
-	iounmap(virtual_optnav);
-}
-
-static struct vreg *vreg_gp7;
-static struct vreg *vreg_gp4;
-static struct vreg *vreg_gp9;
-static struct vreg *vreg_usb3_3;
-
-static int optnav_enable(void)
-{
-	int rc;
-	/*
-	 * Enable the VREGs L8(gp7), L10(gp4), L12(gp9), L6(usb)
-	 * for I2C communication with keyboard.
-	 */
-	vreg_gp7 = vreg_get(NULL, "gp7");
-	rc = vreg_set_level(vreg_gp7, 1800);
-	if (rc) {
-		pr_err("%s: vreg_set_level failed \n", __func__);
-		goto fail_vreg_gp7;
-	}
-
-	rc = vreg_enable(vreg_gp7);
-	if (rc) {
-		pr_err("%s: vreg_enable failed \n", __func__);
-		goto fail_vreg_gp7;
-	}
-
-	vreg_gp4 = vreg_get(NULL, "gp4");
-	rc = vreg_set_level(vreg_gp4, 2600);
-	if (rc) {
-		pr_err("%s: vreg_set_level failed \n", __func__);
-		goto fail_vreg_gp4;
-	}
-
-	rc = vreg_enable(vreg_gp4);
-	if (rc) {
-		pr_err("%s: vreg_enable failed \n", __func__);
-		goto fail_vreg_gp4;
-	}
-
-	vreg_gp9 = vreg_get(NULL, "gp9");
-	rc = vreg_set_level(vreg_gp9, 1800);
-	if (rc) {
-		pr_err("%s: vreg_set_level failed \n", __func__);
-		goto fail_vreg_gp9;
-	}
-
-	rc = vreg_enable(vreg_gp9);
-	if (rc) {
-		pr_err("%s: vreg_enable failed \n", __func__);
-		goto fail_vreg_gp9;
-	}
-
-	vreg_usb3_3 = vreg_get(NULL, "usb");
-	rc = vreg_set_level(vreg_usb3_3, 3300);
-	if (rc) {
-		pr_err("%s: vreg_set_level failed \n", __func__);
-		goto fail_vreg_3_3;
-	}
-
-	rc = vreg_enable(vreg_usb3_3);
-	if (rc) {
-		pr_err("%s: vreg_enable failed \n", __func__);
-		goto fail_vreg_3_3;
-	}
-
-	/* Enable the chip select GPIO */
-	gpio_set_value(OPTNAV_CHIP_SELECT, 1);
-	gpio_set_value(OPTNAV_CHIP_SELECT, 0);
-
-	return 0;
-
-fail_vreg_3_3:
-	vreg_disable(vreg_gp9);
-fail_vreg_gp9:
-	vreg_disable(vreg_gp4);
-fail_vreg_gp4:
-	vreg_disable(vreg_gp7);
-fail_vreg_gp7:
-	return rc;
-}
-
-static void optnav_disable(void)
-{
-	vreg_disable(vreg_usb3_3);
-	vreg_disable(vreg_gp9);
-	vreg_disable(vreg_gp4);
-	vreg_disable(vreg_gp7);
-
-	gpio_set_value(OPTNAV_CHIP_SELECT, 1);
-}
-
-static struct ofn_atlab_platform_data optnav_data = {
-	.gpio_setup    = optnav_gpio_setup,
-	.gpio_release  = optnav_gpio_release,
-	.optnav_on     = optnav_enable,
-	.optnav_off    = optnav_disable,
-	.rotate_xy     = 0,
-	.function1 = {
-		.no_motion1_en		= true,
-		.touch_sensor_en	= true,
-		.ofn_en			= true,
-		.clock_select_khz	= 1500,
-		.cpi_selection		= 1200,
-	},
-	.function2 =  {
-		.invert_y		= false,
-		.invert_x		= true,
-		.swap_x_y		= false,
-		.hold_a_b_en		= true,
-		.motion_filter_en       = true,
-	},
-};
 #endif
 #ifdef CONFIG_BOSCH_BMA150
 static struct vreg *vreg_gp6;
@@ -4819,56 +4599,6 @@ static struct platform_device pm8058_leds = {
         },
 };
 
-static struct pm8058_led_config pm_led_config_CH[] = {
-        {
-                .name = "amber",
-                .type = PM8058_LED_DRVX,
-                .bank = 4,
-                .flags = PM8058_LED_BLINK_EN,
-                .out_current = 25,
-        },
-        {
-                .name = "green",
-                .type = PM8058_LED_DRVX,
-                .bank = 5,
-                .flags = PM8058_LED_BLINK_EN,
-                .out_current = 35,
-        },
-        {
-                .name = "button-backlight",
-                .type = PM8058_LED_DRVX,
-                .bank = 6,
-                .flags = PM8058_LED_LTU_EN,
-                .period_us = USEC_PER_SEC / 1000,
-                .start_index = 0,
-                .duites_size = 8,
-                .duty_time_ms = 32,
-                .lut_flag = PM_PWM_LUT_RAMP_UP | PM_PWM_LUT_PAUSE_HI_EN,
-                .out_current = 24,
-        },
-};
-
-static struct pm8058_led_platform_data pm8058_leds_data_CH = {
-        .led_config = pm_led_config_CH,
-        .num_leds = ARRAY_SIZE(pm_led_config_CH),
-        .duties = {0, 15, 30, 45, 60, 75, 90, 100,
-                   100, 90, 75, 60, 45, 30, 15, 0,
-                   0, 0, 0, 0, 0, 0, 0, 0,
-                   0, 0, 0, 0, 0, 0, 0, 0,
-                   0, 0, 0, 0, 0, 0, 0, 0,
-                   0, 0, 0, 0, 0, 0, 0, 0,
-                   0, 0, 0, 0, 0, 0, 0, 0,
-                   0, 0, 0, 0, 0, 0, 0, 0},
-};
-static struct platform_device pm8058_leds_CH = {
-        .name   = "leds-pm8058",
-        .id     = -1,
-        .dev    = {
-                .platform_data  = &pm8058_leds_data_CH,
-        },
-};
-
-
 #define PM8058ADC_16BIT(adc) ((adc * 2200) / 65535) /* vref=2.2v, 16-bits resolution */
 int64_t primou_get_usbid_adc(void)
 {
@@ -5017,113 +4747,6 @@ static struct platform_device *devices[] __initdata = {
         &cable_detect_device,
         &htc_headset_mgr,
         &htc_drm,
-};
-
-static struct platform_device *devices_CH[] __initdata = {
-#if defined(CONFIG_SERIAL_MSM) || defined(CONFIG_MSM_SERIAL_DEBUGGER)
-	&msm_device_uart2,
-#endif
-#ifdef CONFIG_MSM_PROC_COMM_REGULATOR
-	&msm_proccomm_regulator_dev,
-#endif
-	&asoc_msm_pcm,
-	&asoc_msm_dai0,
-	&asoc_msm_dai1,
-#if defined(CONFIG_SND_MSM_MVS_DAI_SOC)
-	&asoc_msm_mvs,
-	&asoc_mvs_dai0,
-	&asoc_mvs_dai1,
-#endif
-	&msm_device_smd,
-	&msm_device_dmov,
-#if 0
-	&smc91x_device,
-	&smsc911x_device,
-	&msm_device_nand,
-#endif
-	&msm_device_otg,
-	&qsd_device_spi,
-#ifdef CONFIG_MSM_SSBI
-	&msm_device_ssbi_pmic1,
-#endif
-#ifdef CONFIG_I2C_SSBI
-	/*&msm_device_ssbi6,*/
-	&msm_device_ssbi7,
-#endif
-	&android_pmem_device,
-	&msm_migrate_pages_device,
-#ifdef CONFIG_MSM_ROTATOR
-	&msm_rotator_device,
-#endif
-	&android_pmem_adsp_device,
-	&android_pmem_adsp2_device,
-	&android_pmem_audio_device,
-	&msm_device_i2c,
-	&msm_device_i2c_2,
-	&hs_device,
-#ifdef CONFIG_MSM7KV2_AUDIO
-	&msm_aictl_device,
-	&msm_mi2s_device,
-	&msm_lpa_device,
-	&msm_aux_pcm_device,
-#endif
-
-#ifdef CONFIG_RAWCHIP
-       &msm_rawchip_device,
-#endif
-
-#ifdef CONFIG_S5K4E5YX
-	&msm_camera_sensor_s5k4e5yx,
-#endif
-
-	&msm_device_adspdec,
-	&qup_device_i2c,
-
-	&msm_kgsl_3d0,
-	&msm_kgsl_2d0,
-	&msm_device_vidc_720p,
-#ifdef CONFIG_MSM_GEMINI
-	&msm_gemini_device,
-#endif
-#ifdef CONFIG_MSM_VPE
-	&msm_vpe_device,
-#endif
-#if defined(CONFIG_TSIF) || defined(CONFIG_TSIF_MODULE)
-	&msm_device_tsif,
-#endif
-#ifdef CONFIG_MSM_SDIO_AL
-	/* &msm_device_sdio_al, */
-#endif
-
-#if defined(CONFIG_CRYPTO_DEV_QCRYPTO) || \
-		defined(CONFIG_CRYPTO_DEV_QCRYPTO_MODULE)
-	&qcrypto_device,
-#endif
-
-#if defined(CONFIG_CRYPTO_DEV_QCEDEV) || \
-		defined(CONFIG_CRYPTO_DEV_QCEDEV_MODULE)
-	&qcedev_device,
-#endif
-
-	&htc_battery_pdev,
-	&msm_adc_device,
-	&msm_ebi0_thermal,
-	&msm_ebi1_thermal,
-#ifdef CONFIG_SERIAL_BCM_BT_LPM
-	&bcm_bt_lpm_device,
-#endif
-#if defined(CONFIG_SERIAL_MSM_HS) || defined(CONFIG_SERIAL_MSM_HS_LPM)
-	&msm_device_uart_dm1,
-#endif
-#ifdef CONFIG_BT
-	&primou_rfkill,
-#endif
-
-
-	&pm8058_leds_CH,
-	&cable_detect_device,
-	&htc_headset_mgr,
-	&htc_drm,
 };
 
 static struct msm_gpio msm_i2c_gpios_hw[] = {
@@ -6524,16 +6147,10 @@ static void __init primou_init(void)
 		pm_led_config[0].out_current = 40;
 		htc_headset_mgr_config[0].adc_max = 65535;
 	}
-        device_mid = get_model_id();
-	if (strstr(device_mid, "PK7612")) {
-		platform_add_devices(devices_CH, ARRAY_SIZE(devices_CH));
-	} else {
-		platform_add_devices(devices, ARRAY_SIZE(devices));
-	}
 
-	/*usb driver won't be loaded in MFG 58 station and gift mode*/
-	if (!(board_mfg_mode() == 6 || board_mfg_mode() == 7))
-		primou_add_usb_devices();
+	platform_add_devices(devices, ARRAY_SIZE(devices));
+
+	primou_add_usb_devices();
 
 #ifdef CONFIG_USB_EHCI_MSM_72K
 	msm_add_host(0, &msm_usb_host_pdata);
@@ -6663,6 +6280,18 @@ static void __init primou_init(void)
 	primou_wifi_init();
 }
 
+unsigned long size;
+unsigned long msm_ion_camera_size;
+
+static void fix_sizes(void)
+{
+	size = pmem_adsp_size;
+
+#ifdef CONFIG_ION_MSM
+	msm_ion_camera_size = size;
+#endif
+}
+
 static unsigned pmem_sf_size = MSM_PMEM_SF_SIZE;
 static int __init pmem_sf_size_setup(char *p)
 {
@@ -6703,6 +6332,65 @@ static int __init pmem_audio_size_setup(char *p)
 }
 early_param("pmem_audio_size", pmem_audio_size_setup);
 
+#ifdef CONFIG_ION_MSM
+#ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
+static struct ion_co_heap_pdata co_ion_pdata = {
+	.adjacent_mem_id = INVALID_HEAP_ID,
+	.align = PAGE_SIZE,
+};
+#endif
+
+/*
+ * These heaps are listed in the order they will be allocated.
+ * Don't swap the order unless you know what you are doing!
+ */
+static struct ion_platform_data ion_pdata = {
+	.nr = MSM_ION_HEAP_NUM,
+	.heaps = {
+		{
+			.id     = ION_SYSTEM_HEAP_ID,
+			.type   = ION_HEAP_TYPE_SYSTEM,
+			.name   = ION_VMALLOC_HEAP_NAME,
+		},
+#ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
+		/* PMEM_ADSP = CAMERA */
+		{
+			.id     = ION_CAMERA_HEAP_ID,
+			.type   = ION_HEAP_TYPE_CARVEOUT,
+			.name   = ION_CAMERA_HEAP_NAME,
+			.memory_type = ION_EBI_TYPE,
+			.has_outer_cache = 1,
+			.extra_data = (void *)&co_ion_pdata,
+		},
+		/* PMEM_AUDIO */
+		{
+			.id     = ION_AUDIO_HEAP_ID,
+			.type   = ION_HEAP_TYPE_CARVEOUT,
+			.name   = ION_AUDIO_HEAP_NAME,
+			.memory_type = ION_EBI_TYPE,
+			.has_outer_cache = 1,
+			.extra_data = (void *)&co_ion_pdata,
+		},
+		/* PMEM_MDP = SF */
+		{
+			.id     = ION_SF_HEAP_ID,
+			.type   = ION_HEAP_TYPE_CARVEOUT,
+			.name   = ION_SF_HEAP_NAME,
+			.memory_type = ION_EBI_TYPE,
+			.has_outer_cache = 1,
+			.extra_data = (void *)&co_ion_pdata,
+		},
+#endif
+	}
+};
+
+static struct platform_device ion_dev = {
+	.name = "ion-msm",
+	.id = 1,
+	.dev = { .platform_data = &ion_pdata },
+};
+#endif
+
 static struct memtype_reserve msm7x30_reserve_table[] __initdata = {
 	[MEMTYPE_SMI] = {
 	},
@@ -6714,6 +6402,8 @@ static struct memtype_reserve msm7x30_reserve_table[] __initdata = {
 	},
 };
 
+#ifdef CONFIG_ANDROID_PMEM
+#ifndef CONFIG_MSM_MULTIMEDIA_USE_ION
 static void __init size_pmem_device(struct android_pmem_platform_data *pdata, unsigned long start, unsigned long size)
 {
 	pdata->start = start;
@@ -6725,18 +6415,24 @@ static void __init size_pmem_device(struct android_pmem_platform_data *pdata, un
 		pr_info("%s: pmem %s requests %lu bytes dynamically.\r\n",
 			__func__, pdata->name, size);
 }
+#endif
+#endif
 
 static void __init size_pmem_devices(void)
 {
 #ifdef CONFIG_ANDROID_PMEM
+#ifndef CONFIG_MSM_MULTIMEDIA_USE_ION
 	size_pmem_device(&android_pmem_adsp_pdata, 0, pmem_adsp_size);
 	size_pmem_device(&android_pmem_adsp2_pdata, 0, pmem_adsp2_size);
 	size_pmem_device(&android_pmem_audio_pdata, 0, pmem_audio_size);
 	size_pmem_device(&android_pmem_pdata, 0, pmem_sf_size);
 	msm7x30_reserve_table[MEMTYPE_EBI1].size += PMEM_KERNEL_EBI1_SIZE;
 #endif
+#endif
 }
 
+#ifdef CONFIG_ANDROID_PMEM
+#ifndef CONFIG_MSM_MULTIMEDIA_USE_ION
 static void __init reserve_memory_for(struct android_pmem_platform_data *p)
 {
 	if (p->start == 0) {
@@ -6744,21 +6440,49 @@ static void __init reserve_memory_for(struct android_pmem_platform_data *p)
 		msm7x30_reserve_table[p->memory_type].size += p->size;
 	}
 }
+#endif
+#endif
 
 static void __init reserve_pmem_memory(void)
 {
+
 #ifdef CONFIG_ANDROID_PMEM
+#ifndef CONFIG_MSM_MULTIMEDIA_USE_ION
 	reserve_memory_for(&android_pmem_adsp_pdata);
 	reserve_memory_for(&android_pmem_adsp2_pdata);
 	reserve_memory_for(&android_pmem_audio_pdata);
 	reserve_memory_for(&android_pmem_pdata);
 #endif
+#endif
+}
+
+static void __init size_ion_devices(void)
+{
+#ifdef CONFIG_MSM_MULTIMEDIA_USE_ION
+	ion_pdata.heaps[1].size = msm_ion_camera_size;
+	ion_pdata.heaps[2].size = MSM_ION_AUDIO_SIZE;
+	ion_pdata.heaps[3].size = MSM_ION_SF_SIZE;
+#endif
+}
+
+static void __init reserve_ion_memory(void)
+{
+#if defined(CONFIG_ION_MSM) && defined(CONFIG_MSM_MULTIMEDIA_USE_ION)
+	msm7x30_reserve_table[MEMTYPE_EBI0].size += msm_ion_camera_size;
+	msm7x30_reserve_table[MEMTYPE_EBI0].size += MSM_ION_AUDIO_SIZE;
+	msm7x30_reserve_table[MEMTYPE_EBI0].size += MSM_ION_SF_SIZE;
+#endif
 }
 
 static void __init msm7x30_calculate_reserve_sizes(void)
 {
+	/* Pmem is depreciated but still semi needed */
 	size_pmem_devices();
 	reserve_pmem_memory();
+	/* ION is where its at */
+	fix_sizes();
+	size_ion_devices();
+	reserve_ion_memory();
 }
 
 static int msm7x30_paddr_to_memtype(unsigned int paddr)
