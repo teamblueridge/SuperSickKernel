@@ -2897,10 +2897,80 @@ static struct resource msm_fb_resources[] = {
 	}
 };
 
+#ifdef CONFIG_MSM_V4L2_VIDEO_OVERLAY_DEVICE
+static struct resource msm_v4l2_video_overlay_resources[] = {
+	{
+		.flags = IORESOURCE_DMA,
+	}
+};
+#endif
+
+static int msm_fb_detect_panel(const char *name)
+{
+	if (machine_is_msm7x30_fluid()) {
+		if (!strcmp(name, "lcdc_sharp_wvga_pt"))
+			return 0;
+	} else {
+		if (!strncmp(name, "mddi_toshiba_wvga_pt", 20))
+			return -EPERM;
+		else if (!strncmp(name, "lcdc_toshiba_wvga_pt", 20))
+			return 0;
+		else if (!strcmp(name, "mddi_orise"))
+			return -EPERM;
+		else if (!strcmp(name, "mddi_quickvx"))
+			return -EPERM;
+	}
+	return -ENODEV;
+}
+
+static struct msm_fb_platform_data msm_fb_pdata = {
+	.detect_client = msm_fb_detect_panel,
+	.mddi_prescan = 1,
+};
+
+static struct platform_device msm_fb_device = {
+	.name   = "msm_fb",
+	.id     = 0,
+	.num_resources  = ARRAY_SIZE(msm_fb_resources),
+	.resource       = msm_fb_resources,
+	.dev    = {
+		.platform_data = &msm_fb_pdata,
+	}
+};
+
+#ifdef CONFIG_MSM_V4L2_VIDEO_OVERLAY_DEVICE
+
+static struct platform_device msm_v4l2_video_overlay_device = {
+	.name   = "msm_v4l2_overlay_pd",
+	.id     = 0,
+	.num_resources  = ARRAY_SIZE(msm_v4l2_video_overlay_resources),
+	.resource       = msm_v4l2_video_overlay_resources,
+};
+#endif
+
 static struct platform_device msm_migrate_pages_device = {
 	.name   = "msm_migrate_pages",
 	.id     = -1,
 };
+
+static struct msm_panel_common_pdata mdp_pdata = {
+	.hw_revision_addr = 0xac001270,
+	.gpio = 30,
+	.mdp_max_clk = 192000000,
+	.mdp_rev = MDP_REV_40,
+};
+
+static void __init msm_fb_add_devices(void)
+{
+	msm_fb_register_device("mdp", &mdp_pdata);
+	msm_fb_register_device("pmdh", &mddi_pdata);
+	msm_fb_register_device("lcdc", &lcdc_pdata);
+//	msm_fb_register_device("dtv", &dtv_pdata);
+//	msm_fb_register_device("tvenc", &atv_pdata);
+#ifdef CONFIG_FB_MSM_TVOUT
+	msm_fb_register_device("tvout_device", NULL);
+#endif
+}
 
 #if defined(CONFIG_CRYPTO_DEV_QCRYPTO) || \
 		defined(CONFIG_CRYPTO_DEV_QCRYPTO_MODULE) || \
@@ -3420,6 +3490,10 @@ static struct platform_device *devices[] __initdata = {
 	&msm_device_ssbi7,
 #endif
 	&android_pmem_device,
+	&msm_fb_device,
+#ifdef CONFIG_MSM_V4L2_VIDEO_OVERLAY_DEVICE
+	&msm_v4l2_video_overlay_device,
+#endif
 	&msm_migrate_pages_device,
 #ifdef CONFIG_MSM_ROTATOR
 	&msm_rotator_device,
@@ -4829,7 +4903,6 @@ static void __init primoc_init(void)
 #endif
 
 	buses_init();
-
 	platform_add_devices(devices, ARRAY_SIZE(devices));
 
 	/*usb driver won't be loaded in MFG 58 station and gift mode*/
