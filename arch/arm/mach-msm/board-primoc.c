@@ -4829,7 +4829,8 @@ static void __init primoc_init(void)
 #endif
 
 	buses_init();
-
+	//FIXME: debugging
+	panic();
 	platform_add_devices(devices, ARRAY_SIZE(devices));
 
 	/*usb driver won't be loaded in MFG 58 station and gift mode*/
