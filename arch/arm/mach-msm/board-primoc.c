@@ -2839,7 +2839,6 @@ static void __init msm_qsd_spi_init(void)
 	qsd_device_spi.dev.platform_data = &qsd_spi_pdata;
 }
 
-#ifdef CONFIG_ANDROID_PMEM
 static struct android_pmem_platform_data android_pmem_pdata = {
 	.name = "pmem",
 	.allocator_type = PMEM_ALLOCATORTYPE_ALLORNOTHING,
@@ -2891,7 +2890,6 @@ static struct platform_device android_pmem_audio_device = {
        .id = 4,
        .dev = { .platform_data = &android_pmem_audio_pdata },
 };
-#endif
 
 static struct resource msm_fb_resources[] = {
 	{
