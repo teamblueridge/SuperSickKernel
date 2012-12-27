@@ -17,7 +17,6 @@
 #define bma250_RANGE_SEL_REG	0x0F
 #define bma250_BW_SEL_REG	0x10
 #define bma250_MODE_CTRL_REG	0x11
-#define bma250_SELF_TEST_REG	0x32
 
 /* IOCTLs*/
 #define BMA_IOCTL_INIT			_IO(BMAIO, 0x31)
