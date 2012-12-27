@@ -1,0 +1,9 @@
+Change-Id: I72ec1179057fa1fdbead0e42b800cf481d82a19c
+Code-Review+1: Kyle Laker <kalaker@teamblueridge.com>
+Code-Review+2: Simon Sickle <simonsimons34@gmail.com>
+Verified+1: Jenkins Code Verification <webmaster@teamblueridge.com>
+Submitted-by: Simon Sickle <simonsimons34@gmail.com>
+Submitted-at: Thu, 27 Dec 2012 00:16:25 -0500
+Reviewed-on: http://gerrit.teamblueridge.com:8080/200
+Project: SuperSickKernel
+Branch: refs/heads/jellybean
