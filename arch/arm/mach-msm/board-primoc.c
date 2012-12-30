@@ -2897,6 +2897,26 @@ static struct resource msm_fb_resources[] = {
 	}
 };
 
+static struct platform_device msm_fb_device = {
+	.name   = "msm_fb",
+	.id     = 0,
+	.num_resources  = ARRAY_SIZE(msm_fb_resources),
+	.resource       = msm_fb_resources,
+	.dev    = {
+		.platform_data = &msm_fb_pdata,
+	}
+};
+
+#ifdef CONFIG_MSM_V4L2_VIDEO_OVERLAY_DEVICE
+
+static struct platform_device msm_v4l2_video_overlay_device = {
+	.name   = "msm_v4l2_overlay_pd",
+	.id     = 0,
+	.num_resources  = ARRAY_SIZE(msm_v4l2_video_overlay_resources),
+	.resource       = msm_v4l2_video_overlay_resources,
+};
+#endif
+
 static struct platform_device msm_migrate_pages_device = {
 	.name   = "msm_migrate_pages",
 	.id     = -1,
@@ -3420,6 +3440,10 @@ static struct platform_device *devices[] __initdata = {
 	&msm_device_ssbi7,
 #endif
 	&android_pmem_device,
+	&msm_fb_device,
+#ifdef CONFIG_MSM_V4L2_VIDEO_OVERLAY_DEVICE
+	&msm_v4l2_video_overlay_device,
+#endif
 	&msm_migrate_pages_device,
 #ifdef CONFIG_MSM_ROTATOR
 	&msm_rotator_device,
