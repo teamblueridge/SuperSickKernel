@@ -3420,6 +3420,10 @@ static struct platform_device *devices[] __initdata = {
 	&msm_device_ssbi7,
 #endif
 	&android_pmem_device,
+	&msm_fb_device,
+#ifdef CONFIG_MSM_V4L2_VIDEO_OVERLAY_DEVICE
+	&msm_v4l2_video_overlay_device,
+#endif
 	&msm_migrate_pages_device,
 #ifdef CONFIG_MSM_ROTATOR
 	&msm_rotator_device,
