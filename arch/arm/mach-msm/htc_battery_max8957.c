@@ -3192,7 +3192,7 @@ static int __init htc_battery_max8957_init(void)
 #ifdef CONFIG_FB
 #ifndef CONFIG_ARCH_MSM7X27A
 	/* Jay, The msm_fb need to consult htc_battery for power policy */
-	display_notifier(htc_power_policy, NOTIFY_POWER);
+	//display_notifier(htc_power_policy, NOTIFY_POWER);
 #endif
 #endif
 	return 0;
