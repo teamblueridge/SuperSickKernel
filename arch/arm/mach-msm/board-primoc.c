@@ -56,6 +56,7 @@
 #else
 #include <linux/usb/msm_hsusb.h>
 #endif
+#include <linux/msm_kgsl.h>
 #include <mach/msm_spi.h>
 #include <mach/qdsp5v2_2x/msm_lpa.h>
 #include <mach/dma.h>
@@ -139,6 +140,12 @@
 #include <mach/htc_battery_max8957.h>
 #endif
 #endif /* CONFIG_MFD_MAX8957 */
+
+#ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
+#define MSM_FB_SIZE            0x780000
+#else
+#define MSM_FB_SIZE            0x500000
+#endif
 
 #ifdef CONFIG_ION_MSM
 static struct platform_device ion_dev;
@@ -2897,6 +2904,46 @@ static struct resource msm_fb_resources[] = {
 	}
 };
 
+static int msm_fb_detect_panel(const char *name)
+{
+		if (!strncmp(name, "mddi_toshiba_wvga_pt", 20))
+			return -EPERM;
+		else if (!strncmp(name, "lcdc_toshiba_wvga_pt", 20))
+			return 0;
+		else if (!strcmp(name, "mddi_orise"))
+			return -EPERM;
+	else
+	return -ENODEV;
+}
+
+static struct msm_panel_common_pdata mdp_pdata = {
+	.hw_revision_addr = 0xac001270,
+	.gpio = 30,
+	.mdp_max_clk = 192000000,
+	.mdp_rev = MDP_REV_40,
+};
+
+static struct msm_fb_platform_data msm_fb_pdata = {
+	.detect_client = msm_fb_detect_panel,
+	.mddi_prescan = 1,
+};
+
+static struct platform_device msm_fb_device = {
+	.name   = "msm_fb",
+	.id     = 0,
+	.num_resources  = ARRAY_SIZE(msm_fb_resources),
+	.resource       = msm_fb_resources,
+	.dev    = {
+		.platform_data = &msm_fb_pdata,
+	}
+};
+
+static void __init msm_fb_add_devices(void)
+{
+	msm_fb_register_device("mdp", &mdp_pdata);
+	msm_fb_register_device("pmdh", &mddi_pdata);
+}
+
 static struct platform_device msm_migrate_pages_device = {
 	.name   = "msm_migrate_pages",
 	.id     = -1,
@@ -3420,6 +3467,7 @@ static struct platform_device *devices[] __initdata = {
 	&msm_device_ssbi7,
 #endif
 	&android_pmem_device,
+	&msm_fb_device,
 	&msm_migrate_pages_device,
 #ifdef CONFIG_MSM_ROTATOR
 	&msm_rotator_device,
@@ -4844,6 +4892,7 @@ static void __init primoc_init(void)
 	msm7x30_init_mmc();
 	msm_qsd_spi_init();
 
+	msm_fb_add_devices();
 
 	msm_pm_set_platform_data(msm_pm_data, ARRAY_SIZE(msm_pm_data));
 	BUG_ON(msm_pm_boot_init(MSM_PM_BOOT_CONFIG_RESET_VECTOR, ioremap(0x0, PAGE_SIZE)));
