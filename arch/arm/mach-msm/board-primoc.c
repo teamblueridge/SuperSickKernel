@@ -56,6 +56,7 @@
 #else
 #include <linux/usb/msm_hsusb.h>
 #endif
+#include <linux/msm_kgsl.h>
 #include <mach/msm_spi.h>
 #include <mach/qdsp5v2_2x/msm_lpa.h>
 #include <mach/dma.h>
@@ -2897,6 +2898,35 @@ static struct resource msm_fb_resources[] = {
 	}
 };
 
+static int msm_fb_detect_panel(const char *name)
+{
+		if (!strncmp(name, "mddi_toshiba_wvga_pt", 20))
+			return -EPERM;
+		else if (!strncmp(name, "lcdc_toshiba_wvga_pt", 20))
+			return 0;
+		else if (!strcmp(name, "mddi_orise"))
+			return -EPERM;
+	else
+	return -ENODEV;
+}
+
+static struct platform_device msm_fb_device = {
+	.name   = "msm_fb",
+	.id     = 0,
+	.num_resources  = ARRAY_SIZE(msm_fb_resources),
+	.resource       = msm_fb_resources,
+	.dev    = {
+		.platform_data = &msm_fb_pdata,
+	}
+};
+
+static void __init msm_fb_add_devices(void)
+{
+	msm_fb_register_device("mdp", &mdp_pdata);
+	msm_fb_register_device("pmdh", &mddi_pdata);
+	msm_fb_register_device("dtv", &dtv_pdata);
+}
+
 static struct platform_device msm_migrate_pages_device = {
 	.name   = "msm_migrate_pages",
 	.id     = -1,
@@ -3420,6 +3450,7 @@ static struct platform_device *devices[] __initdata = {
 	&msm_device_ssbi7,
 #endif
 	&android_pmem_device,
+	&msm_fb_device,
 	&msm_migrate_pages_device,
 #ifdef CONFIG_MSM_ROTATOR
 	&msm_rotator_device,
@@ -4844,6 +4875,7 @@ static void __init primoc_init(void)
 	msm7x30_init_mmc();
 	msm_qsd_spi_init();
 
+	msm_fb_add_devices();
 
 	msm_pm_set_platform_data(msm_pm_data, ARRAY_SIZE(msm_pm_data));
 	BUG_ON(msm_pm_boot_init(MSM_PM_BOOT_CONFIG_RESET_VECTOR, ioremap(0x0, PAGE_SIZE)));

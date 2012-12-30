@@ -157,7 +157,7 @@ extern int panel_type;
 
 int primoc_init_mmc(unsigned int sys_rev);
 void __init primoc_audio_init(void);
-int primoc_init_keypad(void);
+int __init primoc_init_keypad(void);
 int __init primoc_wifi_init(void);
 
 #endif /* __ARCH_ARM_MACH_MSM_BOARD_PRIMOC_H */
