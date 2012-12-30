@@ -45,6 +45,12 @@
 #define B(s...) do {} while (0)
 #endif
 
+#ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
+#define MSM_FB_SIZE            0x780000
+#else
+#define MSM_FB_SIZE            0x500000
+#endif
+
 static struct vreg *V_LCMIO_1V8;
 static struct vreg *V_LCMIO_2V85;
 

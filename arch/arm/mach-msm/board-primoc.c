@@ -56,6 +56,7 @@
 #else
 #include <linux/usb/msm_hsusb.h>
 #endif
+#include <linux/msm_kgsl.h>
 #include <mach/msm_spi.h>
 #include <mach/qdsp5v2_2x/msm_lpa.h>
 #include <mach/dma.h>
@@ -139,6 +140,12 @@
 #include <mach/htc_battery_max8957.h>
 #endif
 #endif /* CONFIG_MFD_MAX8957 */
+
+#ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
+#define MSM_FB_SIZE            0x780000
+#else
+#define MSM_FB_SIZE            0x500000
+#endif
 
 #ifdef CONFIG_ION_MSM
 static struct platform_device ion_dev;
@@ -2891,11 +2898,313 @@ static struct platform_device android_pmem_audio_device = {
        .dev = { .platform_data = &android_pmem_audio_pdata },
 };
 
+static int display_common_power(int on)
+{
+	int rc = 0, flag_on = !!on;
+	static int display_common_power_save_on;
+	static bool display_regs_initialized;
+
+	if (display_common_power_save_on == flag_on)
+		return 0;
+
+	display_common_power_save_on = flag_on;
+
+	if (unlikely(!display_regs_initialized)) {
+		rc = display_common_init();
+		if (rc) {
+			pr_err("%s: regulator init failed: %d\n",
+					__func__, rc);
+			return rc;
+		}
+		display_regs_initialized = true;
+	}
+
+
+	if (on) {
+		/* reset Toshiba WeGA chip -- toggle reset pin -- gpio_180 */
+		rc = gpio_tlmm_config(wega_reset_gpio, GPIO_CFG_ENABLE);
+		if (rc) {
+			pr_err("%s: gpio_tlmm_config(%#x)=%d\n",
+				       __func__, wega_reset_gpio, rc);
+			return rc;
+		}
+
+		/* bring reset line low to hold reset*/
+		gpio_set_value(180, 0);
+
+		if (quickvx_mddi_client) {
+			/* QuickVX chip -- VLP pin -- gpio 97 */
+			rc = gpio_tlmm_config(quickvx_vlp_gpio,
+				GPIO_CFG_ENABLE);
+			if (rc) {
+				pr_err("%s: gpio_tlmm_config(%#x)=%d\n",
+					__func__, quickvx_vlp_gpio, rc);
+				return rc;
+			}
+
+			/* bring QuickVX VLP line low */
+			gpio_set_value(97, 0);
+
+			rc = pm8xxx_gpio_config(pmic_quickvx_clk_gpio.gpio,
+						&pmic_quickvx_clk_gpio.config);
+			if (rc) {
+				pr_err("%s: pm8xxx_gpio_config(%#x)=%d\n",
+					__func__, pmic_quickvx_clk_gpio.gpio,
+					rc);
+				return rc;
+			}
+
+			gpio_set_value_cansleep(PM8058_GPIO_PM_TO_SYS(
+				PMIC_GPIO_QUICKVX_CLK), 0);
+		}
+	}
+
+	if (quickvx_mddi_client)
+		rc = regulator_set_voltage(mddi_ldo20, 1800000, 1800000);
+	else
+		rc = regulator_set_voltage(mddi_ldo20, 1500000, 1500000);
+
+	if (rc) {
+		pr_err("%s: could not set voltage for ldo20: %d\n",
+				__func__, rc);
+		return rc;
+	}
+
+	if (on) {
+		rc = regulator_enable(mddi_ldo20);
+		if (rc) {
+			pr_err("%s: LDO20 regulator enable failed (%d)\n",
+			       __func__, rc);
+			return rc;
+		}
+
+		rc = regulator_enable(mddi_ldo12);
+		if (rc) {
+			pr_err("%s: LDO12 regulator enable failed (%d)\n",
+			       __func__, rc);
+			return rc;
+		}
+
+		if (other_mddi_client) {
+			rc = regulator_enable(mddi_ldo16);
+			if (rc) {
+				pr_err("%s: LDO16 regulator enable failed (%d)\n",
+					   __func__, rc);
+				return rc;
+			}
+		}
+
+		if (quickvx_ldo_enabled) {
+			/* Disable LDO6 during display ON */
+			rc = regulator_disable(mddi_ldo6);
+			if (rc) {
+				pr_err("%s: LDO6 regulator disable failed (%d)\n",
+					   __func__, rc);
+				return rc;
+			}
+			quickvx_ldo_enabled = 0;
+		}
+
+		rc = regulator_enable(mddi_lcd);
+		if (rc) {
+			pr_err("%s: LCD regulator enable failed (%d)\n",
+				__func__, rc);
+			return rc;
+		}
+
+		mdelay(5);		/* ensure power is stable */
+
+		if (machine_is_msm7x30_fluid()) {
+			rc = msm_gpios_request_enable(fluid_vee_reset_gpio,
+					ARRAY_SIZE(fluid_vee_reset_gpio));
+			if (rc)
+				pr_err("%s gpio_request_enable failed rc=%d\n",
+							__func__, rc);
+			else {
+				/* assert vee reset_n */
+				gpio_set_value(20, 1);
+				gpio_set_value(20, 0);
+				mdelay(1);
+				gpio_set_value(20, 1);
+			}
+		}
+
+		gpio_set_value(180, 1); /* bring reset line high */
+		mdelay(10);	/* 10 msec before IO can be accessed */
+
+		if (quickvx_mddi_client) {
+			gpio_set_value(97, 1);
+			msleep(2);
+			gpio_set_value_cansleep(PM8058_GPIO_PM_TO_SYS(
+				PMIC_GPIO_QUICKVX_CLK), 1);
+			msleep(2);
+		}
+
+		rc = pmapp_display_clock_config(1);
+		if (rc) {
+			pr_err("%s pmapp_display_clock_config rc=%d\n",
+					__func__, rc);
+			return rc;
+		}
+
+	} else {
+		rc = regulator_disable(mddi_ldo20);
+		if (rc) {
+			pr_err("%s: LDO20 regulator disable failed (%d)\n",
+			       __func__, rc);
+			return rc;
+		}
+
+
+		if (other_mddi_client) {
+			rc = regulator_disable(mddi_ldo16);
+			if (rc) {
+				pr_err("%s: LDO16 regulator disable failed (%d)\n",
+					   __func__, rc);
+				return rc;
+			}
+		}
+
+		if (quickvx_mddi_client && !quickvx_ldo_enabled) {
+			/* Enable LDO6 during display OFF for
+			   Quicklogic chip to sleep with data retention */
+			rc = regulator_enable(mddi_ldo6);
+			if (rc) {
+				pr_err("%s: LDO6 regulator enable failed (%d)\n",
+					   __func__, rc);
+				return rc;
+			}
+			quickvx_ldo_enabled = 1;
+		}
+
+		gpio_set_value(180, 0); /* bring reset line low */
+
+		if (quickvx_mddi_client) {
+			gpio_set_value(97, 0);
+			gpio_set_value_cansleep(PM8058_GPIO_PM_TO_SYS(
+				PMIC_GPIO_QUICKVX_CLK), 0);
+		}
+
+		rc = regulator_disable(mddi_lcd);
+		if (rc) {
+			pr_err("%s: LCD regulator disable failed (%d)\n",
+				__func__, rc);
+			return rc;
+		}
+
+		mdelay(5);	/* ensure power is stable */
+
+		rc = regulator_disable(mddi_ldo12);
+		if (rc) {
+			pr_err("%s: LDO12 regulator disable failed (%d)\n",
+			       __func__, rc);
+			return rc;
+		}
+
+		if (machine_is_msm7x30_fluid()) {
+			msm_gpios_disable_free(fluid_vee_reset_gpio,
+					ARRAY_SIZE(fluid_vee_reset_gpio));
+		}
+
+		rc = pmapp_display_clock_config(0);
+		if (rc) {
+			pr_err("%s pmapp_display_clock_config rc=%d\n",
+					__func__, rc);
+			return rc;
+		}
+	}
+
+	return rc;
+}
+
+static int msm_fb_mddi_sel_clk(u32 *clk_rate)
+{
+	*clk_rate *= 2;
+	return 0;
+}
+
+static int msm_fb_mddi_client_power(u32 client_id)
+{
+	int rc;
+	printk(KERN_NOTICE "\n client_id = 0x%x", client_id);
+	/* Check if it is Quicklogic client */
+	if (client_id == 0xc5835800) {
+		printk(KERN_NOTICE "\n Quicklogic MDDI client");
+		other_mddi_client = 0;
+		if (IS_ERR(mddi_ldo16)) {
+			rc = PTR_ERR(mddi_ldo16);
+			pr_err("%s: gp10 vreg get failed (%d)\n", __func__, rc);
+			return rc;
+		}
+		rc = regulator_disable(mddi_ldo16);
+		if (rc) {
+			pr_err("%s: LDO16 vreg enable failed (%d)\n",
+							__func__, rc);
+			return rc;
+		}
+
+	} else {
+		printk(KERN_NOTICE "\n Non-Quicklogic MDDI client");
+		quickvx_mddi_client = 0;
+		gpio_set_value(97, 0);
+		gpio_set_value_cansleep(PM8058_GPIO_PM_TO_SYS(
+			PMIC_GPIO_QUICKVX_CLK), 0);
+	}
+
+	return 0;
+}
+
 static struct resource msm_fb_resources[] = {
 	{
 		.flags  = IORESOURCE_DMA,
 	}
 };
+
+static int msm_fb_detect_panel(const char *name)
+{
+		if (!strncmp(name, "mddi_toshiba_wvga_pt", 20))
+			return -EPERM;
+		else if (!strncmp(name, "lcdc_toshiba_wvga_pt", 20))
+			return 0;
+		else if (!strcmp(name, "mddi_orise"))
+			return -EPERM;
+	else
+	return -ENODEV;
+}
+
+static struct msm_panel_common_pdata mdp_pdata = {
+	.hw_revision_addr = 0xac001270,
+	.gpio = 30,
+	.mdp_max_clk = 192000000,
+	.mdp_rev = MDP_REV_40,
+};
+
+static struct mddi_platform_data mddi_pdata = {
+	.mddi_power_save = display_common_power,
+	.mddi_sel_clk = msm_fb_mddi_sel_clk,
+	.mddi_client_power = msm_fb_mddi_client_power,
+};
+
+static struct msm_fb_platform_data msm_fb_pdata = {
+	.detect_client = msm_fb_detect_panel,
+	.mddi_prescan = 1,
+};
+
+static struct platform_device msm_fb_device = {
+	.name   = "msm_fb",
+	.id     = 0,
+	.num_resources  = ARRAY_SIZE(msm_fb_resources),
+	.resource       = msm_fb_resources,
+	.dev    = {
+		.platform_data = &msm_fb_pdata,
+	}
+};
+
+static void __init msm_fb_add_devices(void)
+{
+	msm_fb_register_device("mdp", &mdp_pdata);
+	msm_fb_register_device("pmdh", &mddi_pdata);
+}
 
 static struct platform_device msm_migrate_pages_device = {
 	.name   = "msm_migrate_pages",
@@ -3420,6 +3729,7 @@ static struct platform_device *devices[] __initdata = {
 	&msm_device_ssbi7,
 #endif
 	&android_pmem_device,
+	&msm_fb_device,
 	&msm_migrate_pages_device,
 #ifdef CONFIG_MSM_ROTATOR
 	&msm_rotator_device,
@@ -4844,6 +5154,7 @@ static void __init primoc_init(void)
 	msm7x30_init_mmc();
 	msm_qsd_spi_init();
 
+	msm_fb_add_devices();
 
 	msm_pm_set_platform_data(msm_pm_data, ARRAY_SIZE(msm_pm_data));
 	BUG_ON(msm_pm_boot_init(MSM_PM_BOOT_CONFIG_RESET_VECTOR, ioremap(0x0, PAGE_SIZE)));

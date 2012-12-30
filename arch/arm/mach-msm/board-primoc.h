@@ -42,11 +42,11 @@
 #define MSM_PMEM_ADSP_SIZE	0x03600000
 #define MSM_PMEM_ADSP2_SIZE	0x002C0000
 #define MSM_PMEM_AUDIO_SIZE	0x00200000
-#define MSM_PMEM_SF_SIZE	0x01750000
+#define MSM_PMEM_SF_SIZE	0x1700000
 
 #define PMEM_KERNEL_EBI1_SIZE   0x00700000
 
-#define MSM_FB_SIZE		0x00900000
+//#define MSM_FB_SIZE		0x00900000
 
 
 #define PRIMOC_GPIO_WIFI_IRQ		147
@@ -157,7 +157,7 @@ extern int panel_type;
 
 int primoc_init_mmc(unsigned int sys_rev);
 void __init primoc_audio_init(void);
-int primoc_init_keypad(void);
+int __init primoc_init_keypad(void);
 int __init primoc_wifi_init(void);
 
 #endif /* __ARCH_ARM_MACH_MSM_BOARD_PRIMOC_H */
