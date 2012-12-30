@@ -37,17 +37,35 @@
 #define MSM_MEM_256MB_OFFSET	0x10000000
 
 #define MSM_GPU_MEM_BASE	0x00100000
-#define MSM_GPU_MEM_SIZE	0x003F0000
+#define MSM_GPU_MEM_SIZE	0x00300000
 
-#define MSM_PMEM_ADSP_SIZE	0x03600000
 #define MSM_PMEM_ADSP2_SIZE	0x002C0000
-#define MSM_PMEM_AUDIO_SIZE	0x00200000
-#define MSM_PMEM_SF_SIZE	0x01750000
 
+/*
+ * Reserve space for double buffered full screen
+ * res V4L2 video overlay - i.e. 1280x720x1.5x2
+*/
+#define MSM_V4L2_VIDEO_OVERLAY_BUF_SIZE 2764800
+#define MSM_PMEM_ADSP_BASE  	0x2B900000
+#define MSM_PMEM_ADSP_SIZE	0x01E00000 /* for 8M(4:3) + gpu effect */
+#define PMEM_KERNEL_EBI1_BASE   0x2D600000
 #define PMEM_KERNEL_EBI1_SIZE   0x00700000
+#define MSM_PMEM_SF_SIZE	0x1C00000
+#define MSM_PMEM_AUDIO_SIZE	0x00000000
 
-#define MSM_FB_SIZE		0x00900000
+#define MSM_PMEM_CAMERA_BASE	0x2DD00000
+#define MSM_PMEM_CAMERA_SIZE	0x00C00000
 
+#define MSM_PMEM_MDP_BASE	0x2DD00000
+#define MSM_PMEM_MDP_SIZE	0x02000000
+
+#define MSM_FB_BASE		0x2FD00000
+
+#ifdef CONFIG_FB_MSM_TRIPLE_BUFFER
+#define MSM_FB_SIZE	0x465000
+#else
+#define MSM_FB_SIZE	0x2EE000
+#endif
 
 #define PRIMOC_GPIO_WIFI_IRQ		147
 #define PRIMOC_GPIO_WIFI_SHUTDOWN_N	39
@@ -157,7 +175,7 @@ extern int panel_type;
 
 int primoc_init_mmc(unsigned int sys_rev);
 void __init primoc_audio_init(void);
-int primoc_init_keypad(void);
+int __init primoc_init_keypad(void);
 int __init primoc_wifi_init(void);
 
 #endif /* __ARCH_ARM_MACH_MSM_BOARD_PRIMOC_H */
